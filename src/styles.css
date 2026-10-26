@@ -82,6 +82,7 @@ body {
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; border: 0; background: none; padding: 0; touch-action: manipulation; }
+a:not([class]) { color: var(--accent); text-underline-offset: 3px; }
 ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
 input, textarea { caret-color: var(--accent); }
 :focus-visible { outline: 3px solid var(--fg); outline-offset: 2px; }
