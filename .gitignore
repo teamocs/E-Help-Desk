@@ -7,3 +7,6 @@ dist/
 *.log
 .claude/settings.local.json
 docs/azalea-ehelpdesk-build-brief.md
+
+*.tsbuildinfo
+next-env.d.ts
