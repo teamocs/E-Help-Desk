@@ -245,6 +245,19 @@ export function Shell() {
 /** When hosted inside a viewer that sets its own theme, "Automatic" defers to it. */
 const HOST_THEME = typeof document === 'undefined' ? null : document.documentElement.getAttribute('data-theme');
 
+/** Server-backed app only: says when changes are saved on this device but not yet on the server. */
+function SyncBar() {
+  const { pending, offline } = useUI((s) => s.sync);
+  if (!pending && !offline) return null;
+  const n = pending === 1 ? '1 change' : `${pending} changes`;
+  const text = offline ? (pending ? `Offline. ${n} saved on this device and will send when you are back online.` : 'Offline. Changes are saved on this device.') : `Saving ${n}…`;
+  return (
+    <div role="status" aria-live="polite" style={{ position: 'fixed', top: 'max(env(safe-area-inset-top), 10px)', left: 0, right: 0, display: 'flex', justifyContent: 'center', padding: '0 16px', zIndex: 60, pointerEvents: 'none' }}>
+      <div className={`toast ${offline ? 'warn' : ''}`}>{text}</div>
+    </div>
+  );
+}
+
 /** Theme, text size, motion, the clock and the global toasts. Shared by the demo and the server-backed app. */
 export function AppChrome({ children }: { children: ReactNode }) {
   const prefs = useApp((s) => s.prefs);
@@ -269,6 +282,7 @@ export function AppChrome({ children }: { children: ReactNode }) {
     <MotionConfig reducedMotion={prefs.motion === 'reduce' ? 'always' : 'user'}>
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
       {children}
+      <SyncBar />
       <Toasts />
       <Announcer />
       <HapticHud />

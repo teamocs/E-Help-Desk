@@ -33,7 +33,8 @@ export function RemoteApp({ initial, member }: { initial: Snapshot; member: Memb
           return desk.snapshot;
         },
       },
-      { snapshot: (s) => applySnapshot(s, me), error: (message) => toast(message, "error") },
+      { snapshot: (s) => applySnapshot(s, me), error: (message) => toast(message, "error"), status: (sync) => setUI({ sync }) },
+      { scope: propertyId },
     );
     applySnapshot(snap, me);
     app.set((s) => ({ ...s, me: me.id }));
@@ -42,7 +43,7 @@ export function RemoteApp({ initial, member }: { initial: Snapshot; member: Memb
     return () => {
       stop();
       remote.disable();
-      setUI({ remote: false, screen: "cover" });
+      setUI({ remote: false, screen: "cover", sync: { pending: 0, offline: false } });
       resetApp();
       app.set((s) => ({ ...s, me: null }));
     };
