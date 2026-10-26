@@ -5,7 +5,9 @@ import { auth } from "@/lib/auth/server";
 import { tx } from "@/lib/db";
 import { resolveTenant } from "@/lib/tenant";
 import { Verify } from "../sign-in/Verify";
+import { CreateHotel } from "./CreateHotel";
 import { SignOut } from "./SignOut";
+import { Team, type TeamMember } from "./Team";
 
 export default function DashboardPage() {
   return (
@@ -38,11 +40,8 @@ async function Account() {
   if (!tenant) {
     return (
       <>
-        <h1 className="t-title1">No hotel linked yet</h1>
-        <p className="t-body c2" style={{ margin: "8px 0 20px" }}>
-          {email} has not been invited to a hotel. Ask the owner to invite this address, then sign in again.
-        </p>
-        <SignOut />
+        <CreateHotel email={email} />
+        <div style={{ marginTop: 16 }}><SignOut /></div>
       </>
     );
   }
@@ -52,6 +51,7 @@ async function Account() {
     org: (await q("select name from orgs")).rows[0]?.name as string,
     properties: (await q("select name from properties order by name")).rows as { name: string }[],
     staff: (await q("select dept, count(*)::int as n from staff where active group by dept order by dept")).rows as { dept: string | null; n: number }[],
+    team: (await q("select email, role, user_id is not null as claimed from members order by role desc, email")).rows as TeamMember[],
   }));
 
   return (
@@ -77,6 +77,8 @@ async function Account() {
           </div>
         ))}
       </div>
+
+      <Team members={data.team} isOwner={tenant.role === "owner"} />
 
       <div style={{ display: "grid", gap: 10, marginTop: 24 }}>
         <Link href="/app" className="btn btn-fill btn-lg btn-block">Open the desk</Link>
