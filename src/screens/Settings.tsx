@@ -1,5 +1,5 @@
 import { ROLE_LABEL } from '../domain/rules';
-import { lock, resetApp, setPref, toast, useApp } from '../domain/store';
+import { lock, resetApp, setPref, toast, useApp, useUI } from '../domain/store';
 import { haptic } from '../lib/haptics';
 import { Avatar, Button, Group, Icon, Row, Screen, Segmented, Switch } from '../ui/kit';
 import type { Prefs } from '../domain/types';
@@ -21,6 +21,7 @@ function Toggle({ icon, title, sub, k }: { icon: string; title: string; sub?: st
 export function Settings() {
   const prefs = useApp((s) => s.prefs);
   const me = useApp((s) => s.staff.find((p) => p.id === s.me));
+  const isRemote = useUI((s) => s.remote);
   const idx = Math.max(0, SIZES.findIndex((x) => x >= prefs.textScale));
   return (
     <Screen title="Settings" subtitle="Made to be comfortable at 3 a.m. on a shared phone.">
@@ -66,10 +67,10 @@ export function Settings() {
         <Toggle k="shadow" icon="hourglass" title="Shadow mode" sub="Hide timers from the duty manager and owner" />
       </Group>
 
-      <Group title="About this prototype">
+      {!isRemote && <Group title="About this prototype">
         <Row icon="info" title="Synthetic data" sub="Every ticket, name and cost is made up. Nothing here is a real guest or staff record." />
         <div className="row"><Button variant="gray" block onClick={() => { resetApp(); toast('Demo data reset.', 'info'); }}>Reset demo data</Button></div>
-      </Group>
+      </Group>}
     </Screen>
   );
 }

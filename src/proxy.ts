@@ -9,5 +9,5 @@ export default function proxy(request: NextRequest) {
   return guard(request);
 }
 
-// Only the dashboard is protected. The demo at "/" stays public.
-export const config = { matcher: ["/dashboard/:path*"] };
+// The dashboard and the desk are protected. The demo at "/" stays public.
+export const config = { matcher: ["/dashboard/:path*", "/app/:path*"] };

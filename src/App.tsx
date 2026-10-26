@@ -48,12 +48,17 @@ function Screens() {
 
 const openRequests = (s: State) => s.requests.filter((r) => r.itemIds.some((id) => s.items[id] && isOpen(s.items[id]))).length;
 
+/** Server-backed mode hides the demo-only Network simulator. */
+const visibleNav = (isRemote: boolean) => (isRemote ? NAV.filter((n) => n.tab !== 'network') : NAV);
+const leave = () => window.location.assign('/dashboard');
+
 function Sidebar() {
   const tab = useUI((s) => s.tab);
   const open = useApp(openRequests);
   const acked = useApp((s) => !!s.handover.ackAt);
   const me = useApp(myStaff);
   const guide = useUI((s) => s.guide);
+  const isRemote = useUI((s) => s.remote);
   return (
     <nav className="side" aria-label="Main">
       <div className="brand">
@@ -62,20 +67,22 @@ function Sidebar() {
       </div>
       <Button block icon="plus" feel="medium" onClick={() => openComposer()}>New request</Button>
       <div style={{ height: 8 }} />
-      {NAV.map((n) => (
+      {visibleNav(isRemote).map((n) => (
         <button key={n.tab} type="button" className="side-item" aria-current={tab === n.tab ? 'page' : undefined} onClick={() => { haptic('select'); go(n.tab); }}>
           <Icon name={n.icon} /> {n.label}
           {n.tab === 'requests' && <span className="badge quiet">{open}</span>}
-          {n.tab === 'handover' && !acked && <span className="dot" style={{ marginLeft: 'auto' }} role="img" aria-label="Not yet acknowledged" />}
+          {n.tab === 'handover' && !acked && !isRemote && <span className="dot" style={{ marginLeft: 'auto' }} role="img" aria-label="Not yet acknowledged" />}
         </button>
       ))}
       <span className="side-gap" />
-      <button type="button" className="side-item" onClick={() => { haptic('select'); setUI({ guide: true, sheet: 'demo' }); }} aria-pressed={guide}>
-        <Icon name="play" /> Guided demo
-      </button>
-      <button type="button" className="side-item" onClick={() => { haptic('select'); lock(); }}>
+      {!isRemote && (
+        <button type="button" className="side-item" onClick={() => { haptic('select'); setUI({ guide: true, sheet: 'demo' }); }} aria-pressed={guide}>
+          <Icon name="play" /> Guided demo
+        </button>
+      )}
+      <button type="button" className="side-item" onClick={() => { haptic('select'); if (isRemote) leave(); else lock(); }}>
         <Avatar staff={me} />
-        <span style={{ textAlign: 'left', minWidth: 0 }}><span className="t-sub ellip" style={{ display: 'block', fontWeight: 600 }}>{me?.name}</span><span className="t-cap c2">Tap to switch</span></span>
+        <span style={{ textAlign: 'left', minWidth: 0 }}><span className="t-sub ellip" style={{ display: 'block', fontWeight: 600 }}>{me?.name}</span><span className="t-cap c2">{isRemote ? 'Account' : 'Tap to switch'}</span></span>
       </button>
     </nav>
   );
@@ -120,6 +127,7 @@ function PaperBanner() {
 }
 
 function Sheets({ inspector }: { inspector: boolean }) {
+  const isRemote = useUI((s) => s.remote);
   const sheet = useUI((s) => s.sheet);
   const selItem = useUI((s) => s.selItem);
   const selWo = useUI((s) => s.selWo);
@@ -135,10 +143,10 @@ function Sheets({ inspector }: { inspector: boolean }) {
       </Sheet>
       <Sheet open={sheet === 'more'} title="More" onClose={close}>
         <Group>
-          {NAV.slice(4).map((n) => <Row key={n.tab} icon={n.icon} tint="var(--accent)" title={n.label} chevron onClick={() => go(n.tab)} />)}
-          <Row icon="play" tint="var(--accent)" title="Guided demo" chevron onClick={() => setUI({ guide: true, sheet: 'demo' })} />
+          {visibleNav(isRemote).slice(4).map((n) => <Row key={n.tab} icon={n.icon} tint="var(--accent)" title={n.label} chevron onClick={() => go(n.tab)} />)}
+          {!isRemote && <Row icon="play" tint="var(--accent)" title="Guided demo" chevron onClick={() => setUI({ guide: true, sheet: 'demo' })} />}
           <Row icon="printer" title="Paper kit" chevron onClick={() => setUI({ sheet: 'paper' })} />
-          <Row icon="user" title="Switch person" chevron onClick={lock} />
+          <Row icon="user" title={isRemote ? 'Account' : 'Switch person'} chevron onClick={isRemote ? leave : lock} />
         </Group>
       </Sheet>
       <Sheet open={sheet === 'demo' && tier !== 'wide'} title="Guided demo" onClose={close}><Guide /></Sheet>
@@ -175,7 +183,7 @@ function Paper() {
   );
 }
 
-function Shell() {
+export function Shell() {
   const tier = useTier();
   const tab = useUI((s) => s.tab);
   const selItem = useUI((s) => s.selItem);
@@ -237,8 +245,8 @@ function Shell() {
 /** When hosted inside a viewer that sets its own theme, "Automatic" defers to it. */
 const HOST_THEME = typeof document === 'undefined' ? null : document.documentElement.getAttribute('data-theme');
 
-export function App() {
-  const screen = useUI((s) => s.screen);
+/** Theme, text size, motion, the clock and the global toasts. Shared by the demo and the server-backed app. */
+export function AppChrome({ children }: { children: ReactNode }) {
   const prefs = useApp((s) => s.prefs);
 
   useEffect(() => {
@@ -260,12 +268,21 @@ export function App() {
   return (
     <MotionConfig reducedMotion={prefs.motion === 'reduce' ? 'always' : 'user'}>
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
-      {screen === 'cover' && <Cover />}
-      {screen === 'lock' && <Lock />}
-      {screen === 'app' && <Shell />}
+      {children}
       <Toasts />
       <Announcer />
       <HapticHud />
     </MotionConfig>
+  );
+}
+
+export function App() {
+  const screen = useUI((s) => s.screen);
+  return (
+    <AppChrome>
+      {screen === 'cover' && <Cover />}
+      {screen === 'lock' && <Lock />}
+      {screen === 'app' && <Shell />}
+    </AppChrome>
   );
 }
