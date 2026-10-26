@@ -1,7 +1,9 @@
 import { ROLE_LABEL } from '../domain/rules';
-import { lock, resetApp, setPref, toast, useApp, useUI } from '../domain/store';
+import { app, lock, resetApp, setPref, toast, useApp, useUI } from '../domain/store';
+import { staffApi } from '../domain/staffApi';
 import { haptic } from '../lib/haptics';
 import { Avatar, Button, Group, Icon, Row, Screen, Segmented, Switch } from '../ui/kit';
+import { StaffAdmin } from './StaffAdmin';
 import type { Prefs } from '../domain/types';
 
 const SIZES = [0.9, 1, 1.12, 1.28, 1.48];
@@ -32,8 +34,15 @@ export function Settings() {
             <span className="grow"><span className="t-head" style={{ display: 'block' }}>{me.name}</span><span className="t-foot c2">{me.title}{me.title.toLowerCase().includes(ROLE_LABEL[me.role].toLowerCase()) ? '' : ` · ${ROLE_LABEL[me.role]}`}</span></span>
             <Button size="sm" variant="gray" icon="user" onClick={lock}>Switch</Button>
           </div>
+          {isRemote && me.id !== 'member' && (
+            <div className="row">
+              <Button variant="gray" block onClick={async () => { await staffApi.current?.signOut(); app.set((s) => ({ ...s, me: 'member' })); }}>Back to the manager account</Button>
+            </div>
+          )}
         </Group>
       )}
+
+      {isRemote && me?.id === 'member' && <StaffAdmin />}
 
       <Group title="Appearance">
         <div className="row"><Segmented<Prefs['theme']> label="Appearance" value={prefs.theme} onChange={(v) => setPref('theme', v)} options={[{ value: 'auto', label: 'Automatic' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} /></div>

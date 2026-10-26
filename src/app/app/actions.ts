@@ -1,35 +1,21 @@
 "use server";
 
-import { auth } from "@/lib/auth/server";
 import { tx, type Q } from "@/lib/db";
-import { resolveTenant, type Tenant } from "@/lib/tenant";
 import type { Command, CommandResult, Snapshot } from "@/server/contract";
 import { applyCommand } from "@/server/mutations";
+import { actingStaff, isUuid, whoIsCalling, type Member } from "@/server/session";
 import { loadSnapshot } from "@/server/snapshot";
 
-export interface Member {
-  name: string;
-  role: Tenant["role"];
-}
+export type { Member };
 export interface Desk {
   snapshot: Snapshot;
   member: Member;
-}
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Who is calling? The session says who; the database says which hotel they may use. */
-async function whoIsCalling(): Promise<{ tenant: Tenant; member: Member } | null> {
-  const { data: session } = await auth.getSession();
-  const user = session?.user;
-  if (!user) return null;
-  const tenant = await tx(null, (q) => resolveTenant({ id: user.id, email: user.email, emailVerified: !!user.emailVerified }, q));
-  if (!tenant || tenant === "unverified") return null;
-  return { tenant, member: { name: user.name || user.email, role: tenant.role } };
+  /** The staff member signed in with a PIN on this device, or null when the owner or manager is acting. */
+  actor: string | null;
 }
 
 async function pickProperty(q: Q, requested?: string): Promise<string | undefined> {
-  if (requested && !UUID.test(requested)) return undefined;
+  if (requested && !isUuid(requested)) return undefined;
   const r = requested
     ? await q("select id from properties where id = $1", [requested])
     : await q("select id from properties order by name limit 1");
@@ -43,7 +29,7 @@ export async function loadDesk(propertyId?: string): Promise<Desk | null> {
   return tx(who.tenant.orgId, async (q) => {
     const pid = await pickProperty(q, propertyId);
     if (!pid) return null;
-    return { snapshot: await loadSnapshot(q, who.tenant.orgId, pid), member: who.member };
+    return { snapshot: await loadSnapshot(q, who.tenant.orgId, pid), member: who.member, actor: await actingStaff(q, who.userId, pid) };
   });
 }
 
@@ -51,8 +37,10 @@ export async function loadDesk(propertyId?: string): Promise<Desk | null> {
 export async function runCommand(propertyId: string, cmd: Command): Promise<CommandResult> {
   const who = await whoIsCalling();
   if (!who) return { ok: false, error: "Please sign in again." };
-  if (!UUID.test(propertyId) || typeof cmd !== "object" || cmd === null || typeof cmd.type !== "string") {
+  if (!isUuid(propertyId) || typeof cmd !== "object" || cmd === null || typeof cmd.type !== "string") {
     return { ok: false, error: "That request was not understood." };
   }
-  return tx(who.tenant.orgId, (q) => applyCommand(q, { orgId: who.tenant.orgId, propertyId, actorStaffId: null }, cmd));
+  return tx(who.tenant.orgId, async (q) =>
+    applyCommand(q, { orgId: who.tenant.orgId, propertyId, actorStaffId: await actingStaff(q, who.userId, propertyId) }, cmd),
+  );
 }
