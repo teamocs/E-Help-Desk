@@ -10,14 +10,18 @@
     "test": "vitest run --dir src"
   },
   "dependencies": {
+    "@neondatabase/auth": "^0.6.0-beta",
     "@phosphor-icons/react": "^2.1.10",
     "motion": "^14.6.0",
     "next": "16.4.3",
+    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.12",
     "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
