@@ -79,7 +79,8 @@ async function Account() {
       </div>
 
       <div style={{ display: "grid", gap: 10, marginTop: 24 }}>
-        <Link href="/" className="btn btn-fill btn-lg btn-block">Open the demo</Link>
+        <Link href="/app" className="btn btn-fill btn-lg btn-block">Open the desk</Link>
+        <Link href="/" className="btn btn-gray btn-block">Open the demo</Link>
         <SignOut />
       </div>
     </>

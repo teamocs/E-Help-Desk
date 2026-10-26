@@ -3,6 +3,8 @@ import { buildSeed } from './seed';
 import { BUNDLES, HAZARDS, PRESETS, STAFF, detectSafety, hubUp, isOpen, pad } from './rules';
 import { haptic, hapticsConfig, tone } from '../lib/haptics';
 import type { Hazard, HoldReason, Item, Incident, Prefs, State, Toast, WorkOrder } from './types';
+import type { Snapshot } from '../server/contract';
+import { remote, type Draft } from './remote';
 
 /* ---------- tiny observable store (SwiftUI @Observable in spirit) ---------- */
 export function createStore<S>(init: S) {
@@ -25,6 +27,10 @@ export function createStore<S>(init: S) {
 
 let counter = 0;
 const uid = (p: string) => `${p}${Date.now().toString(36)}${(++counter).toString(36)}`;
+/** Domain ids. Server-backed mode needs real uuids so the optimistic row is the stored row. */
+const nid = (p: string) => (remote.active ? crypto.randomUUID() : uid(p));
+/** Report a change that already happened locally to the server. No-op in demo mode. */
+const send = (d: Draft) => remote.send(d);
 
 export function initialState(now = Date.now()): State {
   const seed = buildSeed(now);
@@ -77,8 +83,10 @@ export interface UI {
   doneSteps: number[];
   running: boolean;
   focusSafetyId?: string;
+  /** Server-backed app: the demo-only screens and the guide are hidden. */
+  remote: boolean;
 }
-export const ui = createStore<UI>({ screen: 'cover', tab: 'requests', sheet: null, guide: false, step: 0, doneSteps: [], running: false });
+export const ui = createStore<UI>({ screen: 'cover', tab: 'requests', sheet: null, guide: false, step: 0, doneSteps: [], running: false, remote: false });
 export function useUI<T>(sel: (s: UI) => T): T {
   return useSyncExternalStore(ui.sub, () => sel(ui.get()));
 }
@@ -208,14 +216,18 @@ export interface LogInput {
 }
 
 export function logRequest(o: LogInput): string {
-  const reqId = uid('r');
+  const reqId = nid('r');
   const refs: string[] = [reqId];
+  const presets = (o.presets ?? []).filter((k) => PRESETS.some((x) => x.key === k));
+  const bundle = BUNDLES.find((x) => x.key === o.bundle);
+  const itemIds = [...presets.map(() => nid('i')), ...(bundle ? bundle.parts.map(() => nid('i')) : [])];
+  let next = 0;
   commit(`Log request, room ${o.room}`, (s) => {
     const n = s.seq.t + 1;
     const items: Record<string, Item> = {};
     const ids: string[] = [];
     const mk = (name: string, dept: Item['dept'], slaMin: number, dependsOn?: string): string => {
-      const id = uid('i');
+      const id = itemIds[next++];
       ids.push(id);
       refs.push(id);
       items[id] = { id, requestId: reqId, name, qty: 1, dept, status: 'new', createdAt: s.now, heldMs: 0, slaMin, dependsOn, events: [ev(s, 'Logged')] };
@@ -240,11 +252,15 @@ export function logRequest(o: LogInput): string {
       items: { ...s.items, ...items },
     };
   }, refs);
+  send({ type: 'logRequest', requestId: reqId, itemIds, room: o.room, presets, bundle: o.bundle, remarks: o.remarks, later: o.later, vip: o.vip });
   return reqId;
 }
 
-export function completeRequest(reqId: string, presets: string[]) {
+export function completeRequest(reqId: string, presetKeys: string[]) {
   const refs = [reqId];
+  const presets = presetKeys.filter((k) => PRESETS.some((x) => x.key === k));
+  const itemIds = presets.map(() => nid('i'));
+  let next = 0;
   commit('Finish logged request', (s) => {
     const req = s.requests.find((r) => r.id === reqId);
     if (!req) return s;
@@ -253,35 +269,48 @@ export function completeRequest(reqId: string, presets: string[]) {
     for (const k of presets) {
       const p = PRESETS.find((x) => x.key === k);
       if (!p) continue;
-      const id = uid('i');
+      const id = itemIds[next++];
       ids.push(id);
       refs.push(id);
       items[id] = { id, requestId: reqId, name: p.label, qty: 1, dept: p.dept, status: 'new', createdAt: s.now, heldMs: 0, slaMin: p.slaMin, events: [ev(s, 'Details added')] };
     }
     return { ...s, requests: s.requests.map((r) => (r.id === reqId ? { ...r, itemIds: [...r.itemIds, ...ids], incomplete: false } : r)), items: { ...s.items, ...items } };
   }, refs);
+  send({ type: 'completeRequest', requestId: reqId, itemIds, presets });
 }
 
-function patchItem(id: string, label: string, fn: (it: Item, now: number) => Partial<Item> | null) {
+/** Returns true when the change applied locally, so only real changes are sent to the server. */
+function patchItem(id: string, label: string, fn: (it: Item, now: number) => Partial<Item> | null): boolean {
+  let applied = false;
   commit(label, (s) => {
     const it = s.items[id];
     if (!it) return s;
     const p = fn(it, s.now);
     if (!p) return s;
+    applied = true;
     return { ...s, items: { ...s.items, [id]: { ...it, ...p, events: [...it.events, ev(s, label)] } } };
   }, [id]);
+  return applied;
 }
 
 const firstOf = (dept: Item['dept'], s: State) => s.staff.find((p) => p.dept === dept && p.onShift && p.role === 'staff')?.id;
 
-export const relay = (id: string) =>
-  patchItem(id, 'Relayed', (it, now) => (it.status === 'new' ? { status: 'relayed', ackAt: now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
-export const onSite = (id: string) =>
-  patchItem(id, 'On site', (it, now) => (['new', 'relayed'].includes(it.status) ? { status: 'on_site', ackAt: it.ackAt ?? now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
-export const hold = (id: string, reason: HoldReason) =>
-  patchItem(id, 'On hold', (it, now) => (['relayed', 'on_site'].includes(it.status) ? { status: 'on_hold', holdReason: reason, holdSince: now, ackAt: it.ackAt ?? now } : null));
-export const resume = (id: string) =>
-  patchItem(id, 'Resumed', (it, now) => (it.status === 'on_hold' ? { status: 'on_site', heldMs: it.heldMs + (now - (it.holdSince ?? now)), holdSince: undefined, holdReason: undefined } : null));
+export const relay = (id: string) => {
+  const ok = patchItem(id, 'Relayed', (it, now) => (it.status === 'new' ? { status: 'relayed', ackAt: now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
+  if (ok) send({ type: 'relay', itemId: id });
+};
+export const onSite = (id: string) => {
+  const ok = patchItem(id, 'On site', (it, now) => (['new', 'relayed'].includes(it.status) ? { status: 'on_site', ackAt: it.ackAt ?? now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
+  if (ok) send({ type: 'onSite', itemId: id });
+};
+export const hold = (id: string, reason: HoldReason) => {
+  const ok = patchItem(id, 'On hold', (it, now) => (['relayed', 'on_site'].includes(it.status) ? { status: 'on_hold', holdReason: reason, holdSince: now, ackAt: it.ackAt ?? now } : null));
+  if (ok) send({ type: 'hold', itemId: id, reason });
+};
+export const resume = (id: string) => {
+  const ok = patchItem(id, 'Resumed', (it, now) => (it.status === 'on_hold' ? { status: 'on_site', heldMs: it.heldMs + (now - (it.holdSince ?? now)), holdSince: undefined, holdReason: undefined } : null));
+  if (ok) send({ type: 'resume', itemId: id });
+};
 
 function closeItem(s: State, id: string, status: 'done' | 'cant_do' | 'duplicate' | 'cancelled', what: string): State {
   const it = s.items[id];
@@ -307,26 +336,30 @@ export function finishItem(id: string, status: 'done' | 'cant_do' | 'duplicate' 
   const label = { done: 'Done', cant_do: "Can't do", duplicate: 'Marked duplicate', cancelled: 'Cancelled' }[status];
   const room = before.requests.find((r) => r.id === it.requestId)?.room;
   commit(label, (s) => closeItem(s, id, status, label), [id]);
+  send({ type: 'finish', itemId: id, status });
   const readied = status === 'done' && /checkout|inspection/i.test(it.name) && before.cleaning.some((c) => c.room === room && (c.status === 'scheduled' || c.status === 'queued'));
   if (readied) toast(`Room ${room} is ready for cleaning. Housekeeping was told.`, 'success');
 }
 
 export function transfer(id: string, dept: Item['dept']) {
+  const newId = nid('i');
+  let applied = false;
   commit('Transfer', (s) => {
     const it = s.items[id];
     if (!it || !isOpen(it) || it.dept === dept) return s;
-    const nid = uid('i');
+    applied = true;
     const req = s.requests.find((r) => r.id === it.requestId);
     return {
       ...s,
       items: {
         ...s.items,
         [id]: { ...it, status: 'transferred', doneAt: s.now, events: [...it.events, ev(s, `Transferred to ${dept}`)] },
-        [nid]: { ...it, id: nid, dept, status: 'new', ackAt: undefined, assignee: undefined, createdAt: s.now, heldMs: 0, holdSince: undefined, holdReason: undefined, xFrom: id, events: [ev(s, 'Transferred in')] },
+        [newId]: { ...it, id: newId, dept, status: 'new', ackAt: undefined, assignee: undefined, createdAt: s.now, heldMs: 0, holdSince: undefined, holdReason: undefined, xFrom: id, events: [ev(s, 'Transferred in')] },
       },
-      requests: s.requests.map((r) => (r.id === req?.id ? { ...r, itemIds: [...r.itemIds, nid] } : r)),
+      requests: s.requests.map((r) => (r.id === req?.id ? { ...r, itemIds: [...r.itemIds, newId] } : r)),
     };
   }, [id]);
+  if (applied) send({ type: 'transfer', itemId: id, newItemId: newId, dept });
 }
 
 /* ---------- escalate item -> work order ---------- */
@@ -337,12 +370,13 @@ export function escalate(id: string): boolean {
     toast('Only on-site Engineering or IT items can become work orders.', 'warn');
     return false;
   }
+  const woId = nid('wo');
   commit('Escalate to work order', (s) => {
     const cur = s.items[id];
     const req = s.requests.find((r) => r.id === cur.requestId);
     const n = s.seq.wo + 1;
     const wo: WorkOrder = {
-      id: `wo${n}`, no: `WO-${pad(n)}`, area: 'Guest room', loc: `Room ${req?.room ?? ''}`, desc: `${cur.name} (from ${req?.ticket ?? 'ticket'})`,
+      id: woId, no: `WO-${pad(n)}`, area: 'Guest room', loc: `Room ${req?.room ?? ''}`, desc: `${cur.name} (from ${req?.ticket ?? 'ticket'})`,
       priority: 'normal', dept: cur.dept, status: 'reported', reportedBy: s.me ?? 's-maria', encodedBy: s.me ?? 's-maria', createdAt: s.now, srcItemId: id,
       audit: [ev(s, 'Escalated from request')],
     };
@@ -353,55 +387,76 @@ export function escalate(id: string): boolean {
       items: { ...s.items, [id]: { ...cur, status: 'escalated', stBeforeEsc: cur.status, woId: wo.id, events: [...cur.events, ev(s, `Escalated to ${wo.no}`)] } },
     };
   }, [id]);
+  send({ type: 'escalate', itemId: id, woId });
   return true;
 }
 
 export function undoEscalate(itemId: string) {
+  let applied = false;
   commit('Undo escalation', (s) => {
     const it = s.items[itemId];
     if (!it || it.status !== 'escalated' || !it.woId) return s;
     const wo = s.wos.find((w) => w.id === it.woId);
     if (wo && wo.status === 'done') return s;
+    applied = true;
     return {
       ...s,
       wos: s.wos.filter((w) => w.id !== it.woId),
       items: { ...s.items, [itemId]: { ...it, status: it.stBeforeEsc ?? 'on_site', woId: undefined, stBeforeEsc: undefined, events: [...it.events, ev(s, 'Escalation undone')] } },
     };
   }, [itemId]);
+  if (applied) send({ type: 'undoEscalate', itemId });
 }
 
 /* ---------- work orders ---------- */
-function patchWo(id: string, label: string, fn: (w: WorkOrder, s: State) => Partial<WorkOrder> | null, after?: (s: State, w: WorkOrder) => State) {
+function patchWo(id: string, label: string, fn: (w: WorkOrder, s: State) => Partial<WorkOrder> | null, after?: (s: State, w: WorkOrder) => State): boolean {
+  let applied = false;
   commit(label, (s) => {
     const w = s.wos.find((x) => x.id === id);
     if (!w) return s;
     const p = fn(w, s);
     if (!p) return s;
+    applied = true;
     const nw = { ...w, ...p, audit: [...w.audit, ev(s, label)] };
     const n = { ...s, wos: s.wos.map((x) => (x.id === id ? nw : x)) };
     return after ? after(n, nw) : n;
   }, [id]);
+  return applied;
 }
-export const assessWo = (id: string, a: { assessment: string; assignType: 'inhouse' | 'outsource'; contractor?: string; estCost: number }) =>
-  patchWo(id, 'Assessed', (w) => (w.status === 'reported' ? { ...a, status: 'assessed' } : null));
-export const startWo = (id: string) => patchWo(id, 'Work started', (w) => (['assessed', 'on_hold'].includes(w.status) ? { status: 'in_progress' } : null));
-export const holdWo = (id: string) => patchWo(id, 'Put on hold', (w) => (w.status === 'in_progress' ? { status: 'on_hold' } : null));
-export const completeWo = (id: string, actualCost: number) =>
-  patchWo(id, 'Completed', (w) => (['in_progress', 'on_hold', 'assessed'].includes(w.status) ? { status: 'done', actualCost } : null), (s, w) =>
+export const assessWo = (id: string, a: { assessment: string; assignType: 'inhouse' | 'outsource'; contractor?: string; estCost: number }) => {
+  if (patchWo(id, 'Assessed', (w) => (w.status === 'reported' ? { ...a, status: 'assessed' } : null))) send({ type: 'assessWo', woId: id, ...a });
+};
+export const startWo = (id: string) => {
+  if (patchWo(id, 'Work started', (w) => (['assessed', 'on_hold'].includes(w.status) ? { status: 'in_progress' } : null))) send({ type: 'startWo', woId: id });
+};
+export const holdWo = (id: string) => {
+  if (patchWo(id, 'Put on hold', (w) => (w.status === 'in_progress' ? { status: 'on_hold' } : null))) send({ type: 'holdWo', woId: id });
+};
+export const completeWo = (id: string, actualCost: number) => {
+  const ok = patchWo(id, 'Completed', (w) => (['in_progress', 'on_hold', 'assessed'].includes(w.status) ? { status: 'done', actualCost } : null), (s, w) =>
     w.srcItemId && s.items[w.srcItemId]?.status === 'escalated' ? closeItem(s, w.srcItemId, 'done', `Closed by ${w.no}`) : s,
   );
-export const reopenWo = (id: string) => patchWo(id, 'Reopened', (w) => (w.status === 'done' ? { status: 'in_progress', actualCost: undefined } : null));
+  if (ok) send({ type: 'completeWo', woId: id, actualCost });
+};
+export const reopenWo = (id: string) => {
+  if (patchWo(id, 'Reopened', (w) => (w.status === 'done' ? { status: 'in_progress', actualCost: undefined } : null))) send({ type: 'reopenWo', woId: id });
+};
 
 /* ---------- cleaning ---------- */
 export function cleanSet(id: string, status: State['cleaning'][number]['status']) {
   commit('Cleaning update', (s) => ({ ...s, cleaning: s.cleaning.map((c) => (c.id === id ? { ...c, status } : c)) }), [id]);
+  send({ type: 'cleanSet', taskId: id, status });
 }
 
 /* ---------- handover ---------- */
+// Handover sign-off and returning orphaned items are not stored on the server yet.
+const notSaved = () => toast('Handover sign-off is not saved to the server yet.', 'warn');
 export function ackHandover() {
+  if (remote.active) return notSaved();
   commit('Handover acknowledged', (s) => ({ ...s, handover: { ackBy: meName(s), ackAt: s.now } }));
 }
 export function returnOrphans() {
+  if (remote.active) return notSaved();
   const s0 = app.get();
   const off = new Set(s0.staff.filter((p) => !p.onShift).map((p) => p.id));
   const ids = Object.values(s0.items).filter((i) => isOpen(i) && i.assignee && off.has(i.assignee)).map((i) => i.id);
@@ -426,22 +481,49 @@ export function raiseSafety(room: string, text: string, hazard: Hazard): { id: s
       incidents: s.incidents.map((i) => (i.id === recent.id ? { ...i, rooms: [...i.rooms, room], log: [...i.log, ev(s, `Second report from room ${room}: treated as one incident`)] } : i)),
     }));
     toast(`Second ${HAZARDS[hazard].label.toLowerCase()} report. Merged into ${recent.no}.`, 'error');
+    send({ type: 'raiseSafety', incidentId: nid('inc'), room, text, hazard });
     return { id: recent.id, clustered: true };
   }
-  const id = uid('inc');
+  const id = nid('inc');
   commit('Safety escalation', (s) => {
     const n = s.seq.inc + 1;
     const inc: Incident = { id, no: `INC-${pad(n, 3)}`, hazard, rooms: [room], createdAt: s.now, text, status: 'active', log: [ev(s, 'Safety words detected. Duty manager and Security alerted over the local network. Staff notified (not BFP/911).')] };
     return { ...s, seq: { ...s.seq, inc: n }, incidents: [inc, ...s.incidents] };
   });
+  send({ type: 'raiseSafety', incidentId: id, room, text, hazard });
   return { id, clustered: false };
 }
 export function patchIncident(id: string, fn: (i: Incident, s: State) => Partial<Incident>, what: string) {
   commit(what, (s) => ({ ...s, incidents: s.incidents.map((i) => (i.id === id ? { ...i, ...fn(i, s), log: [...i.log, ev(s, what)] } : i)) }));
 }
-export const downgradeIncident = (id: string) => patchIncident(id, () => ({ status: 'downgraded' }), 'Downgraded by staff (logged)');
-export const resolveIncident = (id: string) => patchIncident(id, () => ({ status: 'resolved' }), 'Resolved with engineer and manager sign-off');
-export const record911 = (id: string, at: string) => patchIncident(id, (_i, s) => ({ called911: { by: meName(s), at } }), `BFP/911 called at ${at}`);
+export const downgradeIncident = (id: string) => {
+  patchIncident(id, () => ({ status: 'downgraded' }), 'Downgraded by staff (logged)');
+  send({ type: 'downgradeIncident', incidentId: id });
+};
+export const resolveIncident = (id: string) => {
+  patchIncident(id, () => ({ status: 'resolved' }), 'Resolved with engineer and manager sign-off');
+  send({ type: 'resolveIncident', incidentId: id });
+};
+export const record911 = (id: string, at: string) => {
+  patchIncident(id, (_i, s) => ({ called911: { by: meName(s), at } }), `BFP/911 called at ${at}`);
+  send({ type: 'record911', incidentId: id, at: new Date().toISOString() });
+};
+
+/* ---------- server-backed mode ---------- */
+/** Replace the lists with a fresh server snapshot. The signed-in member acts as `member`, who is not a staff row. */
+export function applySnapshot(snap: Snapshot, member?: State['staff'][number]) {
+  app.set((s) => ({
+    ...s,
+    now: Date.now(),
+    staff: member ? [...snap.staff, member] : snap.staff,
+    requests: snap.requests,
+    items: snap.items,
+    wos: snap.wos,
+    cleaning: snap.cleaning,
+    incidents: snap.incidents,
+    seq: snap.seq,
+  }));
+}
 
 /* ---------- selectors ---------- */
 export const myStaff = (s: State) => s.staff.find((p) => p.id === s.me);
