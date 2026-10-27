@@ -3,6 +3,7 @@
 import { tx, type Q } from "@/lib/db";
 import type { Command, CommandResult, Snapshot } from "@/server/contract";
 import { applyCommand } from "@/server/mutations";
+import { needsStaff } from "@/server/policy";
 import { actingStaff, isUuid, whoIsCalling, type Member } from "@/server/session";
 import { loadSnapshot } from "@/server/snapshot";
 
@@ -40,7 +41,10 @@ export async function runCommand(propertyId: string, cmd: Command): Promise<Comm
   if (!isUuid(propertyId) || typeof cmd !== "object" || cmd === null || typeof cmd.type !== "string") {
     return { ok: false, error: "That request was not understood." };
   }
-  return tx(who.tenant.orgId, async (q) =>
-    applyCommand(q, { orgId: who.tenant.orgId, propertyId, actorStaffId: await actingStaff(q, who.userId, propertyId) }, cmd),
-  );
+  return tx(who.tenant.orgId, async (q) => {
+    const actorStaffId = await actingStaff(q, who.userId, propertyId);
+    // A shared phone's own account may not act as itself: someone must sign in with a PIN first.
+    if (needsStaff(who.tenant.role, actorStaffId)) return { ok: false, error: "Sign in with your PIN first." } as const;
+    return applyCommand(q, { orgId: who.tenant.orgId, propertyId, actorStaffId }, cmd);
+  });
 }

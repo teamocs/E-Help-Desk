@@ -3,12 +3,14 @@
 import { cookies } from "next/headers";
 import { tx } from "@/lib/db";
 import { ACTOR_COOKIE, ACTOR_HOURS, signActor } from "@/server/actor";
+import { canManageStaff } from "@/server/policy";
 import { actingStaff, isUuid, whoIsCalling } from "@/server/session";
 import { changePin, checkPin, createStaff, deactivateStaff, type Outcome, type StaffInput } from "@/server/staff";
 
 const SIGN_IN_AGAIN = { ok: false, error: "Please sign in again." } as const;
 const NOT_UNDERSTOOD = { ok: false, error: "That request was not understood." } as const;
 const NO_MATCH = { ok: false, error: "That name and PIN do not match." } as const;
+const DEVICE_DENIED = { ok: false, error: "Shared-phone accounts cannot change staff. Ask a manager." } as const;
 const MANAGER_ONLY = { ok: false, error: "Switch back to the manager account to change staff." } as const;
 
 // Staff changes need the owner or manager account acting, not a staff member on a shared device.
@@ -17,6 +19,7 @@ const MANAGER_ONLY = { ok: false, error: "Switch back to the manager account to 
 export async function addStaff(propertyId: string, input: StaffInput, pin: string): Promise<Outcome<{ id: string }>> {
   const who = await whoIsCalling();
   if (!who) return SIGN_IN_AGAIN;
+  if (!canManageStaff(who.tenant.role)) return DEVICE_DENIED;
   if (!isUuid(propertyId) || typeof input !== "object" || input === null || typeof pin !== "string") return NOT_UNDERSTOOD;
   const clean: StaffInput = { name: String(input.name), title: String(input.title), role: String(input.role), dept: input.dept === null ? null : String(input.dept) };
   return tx(who.tenant.orgId, async (q) => {
@@ -28,6 +31,7 @@ export async function addStaff(propertyId: string, input: StaffInput, pin: strin
 export async function setStaffPin(propertyId: string, staffId: string, pin: string): Promise<Outcome> {
   const who = await whoIsCalling();
   if (!who) return SIGN_IN_AGAIN;
+  if (!canManageStaff(who.tenant.role)) return DEVICE_DENIED;
   if (!isUuid(propertyId) || !isUuid(staffId) || typeof pin !== "string") return NOT_UNDERSTOOD;
   return tx(who.tenant.orgId, async (q) => {
     if (await actingStaff(q, who.userId, propertyId)) return MANAGER_ONLY;
@@ -38,6 +42,7 @@ export async function setStaffPin(propertyId: string, staffId: string, pin: stri
 export async function removeStaff(propertyId: string, staffId: string): Promise<Outcome> {
   const who = await whoIsCalling();
   if (!who) return SIGN_IN_AGAIN;
+  if (!canManageStaff(who.tenant.role)) return DEVICE_DENIED;
   if (!isUuid(propertyId) || !isUuid(staffId)) return NOT_UNDERSTOOD;
   return tx(who.tenant.orgId, async (q) => {
     if (await actingStaff(q, who.userId, propertyId)) return MANAGER_ONLY;

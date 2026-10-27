@@ -36,7 +36,7 @@ const check = (id: string, pin: string, org = AZALEA, user = org === AZALEA ? "u
 
 beforeAll(async () => {
   db = new PGlite();
-  for (const f of ["migrations/0001_init.sql", "migrations/0002_rls.sql", "migrations/0003_onboarding.sql", "migrations/0004_pin_throttle.sql", "seed.sql"]) await db.exec(read(f));
+  for (const f of ["migrations/0001_init.sql", "migrations/0002_rls.sql", "migrations/0003_onboarding.sql", "migrations/0004_pin_throttle.sql", "migrations/0005_device_role.sql", "seed.sql"]) await db.exec(read(f));
   await db.exec(`insert into orgs (id, name) values ('${OTHER}', 'Other Hotel')`);
   await db.exec(`insert into members (org_id, email, user_id, role) values ('${AZALEA}', 'dev@x.test', 'u-test', 'owner'), ('${OTHER}', 'dev@o.test', 'u-other', 'owner')`);
 });

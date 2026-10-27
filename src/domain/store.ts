@@ -87,8 +87,10 @@ export interface UI {
   remote: boolean;
   /** Server-backed app: changes saved on this device that the server has not accepted yet. */
   sync: { pending: number; offline: boolean };
+  /** Server-backed app on a shared phone's account: no manager mode, so staff must sign in with a PIN. */
+  deviceOnly: boolean;
 }
-export const ui = createStore<UI>({ screen: 'cover', tab: 'requests', sheet: null, guide: false, step: 0, doneSteps: [], running: false, remote: false, sync: { pending: 0, offline: false } });
+export const ui = createStore<UI>({ screen: 'cover', tab: 'requests', sheet: null, guide: false, step: 0, doneSteps: [], running: false, remote: false, sync: { pending: 0, offline: false }, deviceOnly: false });
 export function useUI<T>(sel: (s: UI) => T): T {
   return useSyncExternalStore(ui.sub, () => sel(ui.get()));
 }

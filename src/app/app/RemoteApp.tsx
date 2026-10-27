@@ -26,7 +26,10 @@ export function RemoteApp({ initial, member, actor }: { initial: Snapshot; membe
 
   useEffect(() => {
     const { initial: snap, member: m, actor: who } = first;
-    const me: Staff = { id: "member", name: m.name, initials: initials(m.name), role: m.role, title: m.role === "owner" ? "Owner" : "Manager", onShift: true };
+    // A shared phone has no manager identity: only staff who sign in with a PIN can act.
+    const deviceOnly = m.role === "device";
+    const me: Staff | undefined =
+      m.role === "device" ? undefined : { id: "member", name: m.name, initials: initials(m.name), role: m.role, title: m.role === "owner" ? "Owner" : "Manager", onShift: true };
     const propertyId = snap.property.id;
     remote.enable(
       {
@@ -49,14 +52,15 @@ export function RemoteApp({ initial, member, actor }: { initial: Snapshot; membe
     };
     applySnapshot(snap, me);
     // After a reload the signed cookie says who was acting; the server only accepts it if it is still valid.
-    app.set((s) => ({ ...s, me: snap.staff.some((p) => p.id === who) ? who! : me.id }));
-    setUI({ remote: true, screen: "app", tab: "requests", guide: false, sheet: null, selItem: undefined, selWo: undefined });
+    const acting = snap.staff.some((p) => p.id === who) ? who! : null;
+    app.set((s) => ({ ...s, me: acting ?? me?.id ?? null }));
+    setUI({ remote: true, deviceOnly, screen: acting || me ? "app" : "lock", tab: "requests", guide: false, sheet: null, selItem: undefined, selWo: undefined });
     const stop = remote.poll(5000);
     return () => {
       stop();
       remote.disable();
       staffApi.current = null;
-      setUI({ remote: false, screen: "cover", sync: { pending: 0, offline: false } });
+      setUI({ remote: false, deviceOnly: false, screen: "cover", sync: { pending: 0, offline: false } });
       resetApp();
       app.set((s) => ({ ...s, me: null }));
     };
