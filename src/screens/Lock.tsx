@@ -11,6 +11,8 @@ import { Avatar, Icon } from '../ui/kit';
 export function Lock() {
   const all = useApp((s) => s.staff);
   const isRemote = useUI((s) => s.remote);
+  const deviceOnly = useUI((s) => s.deviceOnly);
+  const signedIn = useApp((s) => s.me);
   // On the real desk everyone active is listed (the owner or manager account is not a PIN person).
   const staff = isRemote ? all.filter((p) => p.id !== 'member') : all.filter((p) => p.onShift);
   const [who, setWho] = useState(staff[0]?.id ?? '');
@@ -70,7 +72,7 @@ export function Lock() {
         <p className="t-sub c2" style={{ margin: '4px 0 0' }}>Pick your name, then enter your PIN.{!isRemote && ' Demo: any four digits work.'}</p>
 
         {staff.length === 0 && (
-          <p className="t-body c2" style={{ margin: '24px 0' }}>No staff have been added yet. A manager can add people in Settings.</p>
+          <p className="t-body c2" style={{ margin: '24px 0' }}>No staff have been added yet. A manager can add people in Settings on their own phone.</p>
         )}
 
         <div className="people" role="group" aria-label="Staff on shift">
@@ -93,7 +95,9 @@ export function Lock() {
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
             <motion.button key={k} type="button" className="key" whileTap={{ scale: 0.92 }} transition={springs.instant} onClick={() => press(k)}>{k}</motion.button>
           ))}
-          <button type="button" className="key ghost" onClick={() => setUI({ screen: isRemote ? 'app' : 'cover' })}>{isRemote ? 'Back' : 'Cover'}</button>
+          {isRemote && deviceOnly && !signedIn
+            ? <span className="key ghost" aria-hidden="true" />
+            : <button type="button" className="key ghost" onClick={() => setUI({ screen: isRemote ? 'app' : 'cover' })}>{isRemote ? 'Back' : 'Cover'}</button>}
           <motion.button type="button" className="key" whileTap={{ scale: 0.92 }} transition={springs.instant} onClick={() => press('0')}>0</motion.button>
           <button type="button" className="key ghost" aria-label="Delete" onClick={() => press('<')}><Icon name="undo" /></button>
         </div>

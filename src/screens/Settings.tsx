@@ -24,6 +24,7 @@ export function Settings() {
   const prefs = useApp((s) => s.prefs);
   const me = useApp((s) => s.staff.find((p) => p.id === s.me));
   const isRemote = useUI((s) => s.remote);
+  const deviceOnly = useUI((s) => s.deviceOnly);
   const idx = Math.max(0, SIZES.findIndex((x) => x >= prefs.textScale));
   return (
     <Screen title="Settings" subtitle="Made to be comfortable at 3 a.m. on a shared phone.">
@@ -32,9 +33,9 @@ export function Settings() {
           <div className="row">
             <Avatar staff={me} large />
             <span className="grow"><span className="t-head" style={{ display: 'block' }}>{me.name}</span><span className="t-foot c2">{me.title}{me.title.toLowerCase().includes(ROLE_LABEL[me.role].toLowerCase()) ? '' : ` · ${ROLE_LABEL[me.role]}`}</span></span>
-            <Button size="sm" variant="gray" icon="user" onClick={lock}>Switch</Button>
+            <Button size="sm" variant="gray" icon="user" onClick={async () => { if (isRemote && deviceOnly) { await staffApi.current?.signOut(); app.set((s) => ({ ...s, me: null })); } lock(); }}>Switch</Button>
           </div>
-          {isRemote && me.id !== 'member' && (
+          {isRemote && !deviceOnly && me.id !== 'member' && (
             <div className="row">
               <Button variant="gray" block onClick={async () => { await staffApi.current?.signOut(); app.set((s) => ({ ...s, me: 'member' })); }}>Back to the manager account</Button>
             </div>

@@ -43,11 +43,11 @@ async function ownedOrg() {
   return { user: u, orgId: tenant.orgId };
 }
 
-export async function inviteManager(email: string): Promise<ActionResult> {
+export async function inviteMember(email: string, role: string): Promise<ActionResult> {
   try {
     const o = await ownedOrg();
     if (!o) return { ok: false, error: "Only an owner can invite people." };
-    await tx(o.orgId, (q) => q("select invite_member($1, $2, $3, 'manager')", [o.orgId, o.user.id, typeof email === "string" ? email : ""]));
+    await tx(o.orgId, (q) => q("select invite_member($1, $2, $3, $4)", [o.orgId, o.user.id, typeof email === "string" ? email : "", role === "device" ? "device" : "manager"]));
     return { ok: true };
   } catch (e) {
     return failure(e);

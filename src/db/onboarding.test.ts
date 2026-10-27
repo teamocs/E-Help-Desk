@@ -44,6 +44,8 @@ beforeAll(async () => {
   await db.exec(read("migrations/0001_init.sql"));
   await db.exec(read("migrations/0002_rls.sql"));
   await db.exec(read("migrations/0003_onboarding.sql"));
+  await db.exec(read("migrations/0004_pin_throttle.sql"));
+  await db.exec(read("migrations/0005_device_role.sql"));
   await db.exec(read("seed.sql"));
 });
 
@@ -164,6 +166,36 @@ describe("new hotel throttle", () => {
       }
     }
     expect(refused).toBe(true);
+  });
+});
+
+describe("device accounts", () => {
+  let org: string;
+  beforeAll(async () => {
+    await db.exec("update orgs set created_at = now() - interval '2 hours'"); // the flood test above used up the hourly cap
+    org = (await createOrg("u-fir", "owner@fir.test", true, "Fir Hotel", "Fir Main")).org_id;
+  });
+
+  it("lets the owner invite a device account, which claims it with the device role", async () => {
+    await invite(org, "u-fir", "frontdesk@fir.test", "device");
+    expect(await claim("frontdesk@fir.test", "u-fir-device")).toEqual([{ org_id: org, role: "device" }]);
+    const known = await asApp(async () => (await db.query<{ role: string }>("select role from member_for_user('u-fir-device')")).rows);
+    expect(known).toEqual([{ role: "device" }]);
+  });
+
+  it("still refuses to invite an owner, and a device account cannot invite", async () => {
+    await expect(invite(org, "u-fir", "boss@fir.test", "owner")).rejects.toThrow(/role/i);
+    await expect(invite(org, "u-fir-device", "x@fir.test", "device")).rejects.toThrow(/owner/i);
+    await expect(invite(org, "u-fir-device", "x@fir.test", "manager")).rejects.toThrow(/owner/i);
+  });
+
+  it("does not let a device account leave through leave_org", async () => {
+    await leave("u-fir-device");
+    expect((await members(org)).some((m) => m.email === "frontdesk@fir.test")).toBe(true);
+  });
+
+  it("only knows the three roles", async () => {
+    await expect(db.exec(`insert into members (org_id, email, role) values ('${org}', 'z@fir.test', 'admin')`)).rejects.toThrow();
   });
 });
 

@@ -7,6 +7,7 @@ import { resolveTenant } from "@/lib/tenant";
 import { Verify } from "../sign-in/Verify";
 import { CreateHotel } from "./CreateHotel";
 import { SignOut } from "./SignOut";
+import { canLeave } from "@/server/policy";
 import { Team, type TeamMember } from "./Team";
 
 export default function DashboardPage() {
@@ -78,7 +79,7 @@ async function Account() {
         ))}
       </div>
 
-      <Team members={data.team} isOwner={tenant.role === "owner"} />
+      {tenant.role !== "device" && <Team members={data.team} isOwner={tenant.role === "owner"} canLeave={canLeave(tenant.role)} />}
 
       <div style={{ display: "grid", gap: 10, marginTop: 24 }}>
         <Link href="/app" className="btn btn-fill btn-lg btn-block">Open the desk</Link>

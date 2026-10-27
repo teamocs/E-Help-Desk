@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { inviteManager, leaveHotel, revokeInvite } from "./actions";
+import { inviteMember, leaveHotel, revokeInvite } from "./actions";
 
 export interface TeamMember {
   email: string;
@@ -11,9 +11,10 @@ export interface TeamMember {
 }
 
 /** Owners and managers of the hotel. Only an owner sees the invite form and the revoke buttons. */
-export function Team({ members, isOwner }: { members: TeamMember[]; isOwner: boolean }) {
+export function Team({ members, isOwner, canLeave }: { members: TeamMember[]; isOwner: boolean; canLeave: boolean }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"manager" | "device">("manager");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -28,7 +29,7 @@ export function Team({ members, isOwner }: { members: TeamMember[]; isOwner: boo
 
   async function invite(e: React.FormEvent) {
     e.preventDefault();
-    await run(() => inviteManager(email));
+    await run(() => inviteMember(email, role));
     setEmail("");
   }
 
@@ -41,7 +42,7 @@ export function Team({ members, isOwner }: { members: TeamMember[]; isOwner: boo
             <span className="grow">
               {m.email}
               <span className="t-foot c2" style={{ display: "block", textTransform: "capitalize" }}>
-                {m.role}
+                {m.role === "device" ? "Shared phone" : m.role}
                 {m.claimed ? "" : " · invited, not signed in yet"}
               </span>
             </span>
@@ -53,7 +54,7 @@ export function Team({ members, isOwner }: { members: TeamMember[]; isOwner: boo
           </div>
         ))}
       </div>
-      {!isOwner && (
+      {canLeave && (
         <div style={{ marginTop: 12 }}>
           {error && (
             <div className="banner bad" role="alert" style={{ marginBottom: 12 }}>
@@ -79,14 +80,20 @@ export function Team({ members, isOwner }: { members: TeamMember[]; isOwner: boo
           )}
           <div className="group">
             <div className="row">
-              <input className="field" type="email" placeholder="Manager's email" aria-label="Manager's email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input className="field" type="email" placeholder="Email address" aria-label="Email address to invite" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            </div>
+            <div className="row">
+              <select className="field" aria-label="Account type" value={role} onChange={(e) => setRole(e.target.value as "manager" | "device")}>
+                <option value="manager">Manager (their own phone)</option>
+                <option value="device">Shared phone (staff sign in with a PIN)</option>
+              </select>
             </div>
           </div>
           <button type="submit" className="btn btn-fill btn-block" style={{ marginTop: 10 }} disabled={busy || !email.trim()}>
-            Invite a manager
+            Send invite
           </button>
           <p className="t-foot c2" style={{ marginTop: 8 }}>
-            They sign up at this site with that address, verify it, and are linked to this hotel.
+            They sign up at this site with that address, verify it, and are linked to this hotel. A shared-phone account needs a real mailbox the front desk can read, such as frontdesk@yourhotel.com.
           </p>
         </form>
       )}

@@ -1,8 +1,10 @@
 import type { Q } from "./db";
 
+import type { MemberRole } from "../server/policy";
+
 export interface Tenant {
   orgId: string;
-  role: "owner" | "manager";
+  role: MemberRole;
 }
 
 export interface AuthUser {
