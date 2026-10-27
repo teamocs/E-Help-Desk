@@ -17,5 +17,5 @@ async function Desk() {
   if (!session?.user) redirect("/sign-in");
   const desk = await loadDesk();
   if (!desk) redirect("/dashboard");
-  return <RemoteApp initial={desk.snapshot} member={desk.member} />;
+  return <RemoteApp initial={desk.snapshot} member={desk.member} actor={desk.actor} />;
 }

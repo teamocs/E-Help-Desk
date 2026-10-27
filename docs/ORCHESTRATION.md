@@ -45,3 +45,10 @@
 ## Approvals needed (outward-facing or paid)
 
 Push to `teamocs/E-Help-Desk`, create the Neon project, create the Vercel project. Each is asked for when reached.
+
+## Known limits after Sprint 6 (DRAFT)
+
+- **"Back to the manager account" has no PIN.** The signed-in owner or manager account is the trust root of a shared phone, so anyone holding it can drop out of staff mode and change staff. The fix is separate, restricted device accounts (a device role with no staff management), not more PINs.
+- **Acting-staff cookie is bound to one property.** If an org gets a second property, a command for another property is recorded without a named person until property switching sets the cookie per property.
+- **A PIN reset or removal does not end a staff session already open** (up to 10 hours); removal is enforced on the next command because the person must still be active, a reset is not.
+- **PINs are four digits.** If the database and the auth secret both leak, all 10,000 values can be recovered. Rotating `NEON_AUTH_COOKIE_SECRET` invalidates every PIN and staff session; a manager resets them.
