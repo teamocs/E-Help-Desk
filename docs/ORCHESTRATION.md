@@ -85,3 +85,7 @@ Still open: there is no CAPTCHA, and Neon Auth sign-up and email-code sending ar
 - `apply.mjs`: apply pending migrations (`ENV_FILE=.env.neon-main node --env-file=.env.neon-main db/apply.mjs`).
 - `issue-code.mjs`: issue a one-time hotel setup code; prints it once.
 - `remove-test-hotel.mjs "<hotel name>" <owner email>`: permanently delete one hotel and everything under it (cascade). Matches by exact name AND owner email, in a transaction; deletes nothing unless exactly one hotel matches. The Neon Auth login is not removed.
+
+## Decision: incident retention (owner, 2026-10-29)
+
+Keep every safety incident record for now. Nothing deletes them. The desk shows active incidents plus those from the last 7 days; older ones stay in the database. Revisit before the pilot goes live: a fixed deletion period would be a script the owner runs, not an automatic job, and needs a legal and policy answer first.
