@@ -212,17 +212,17 @@ async function loadHandover(q: Q, propertyId: string): Promise<Handover> {
 async function loadIncidents(q: Q, propertyId: string): Promise<Incident[]> {
   const rows = await select<IncidentRow>(
     q,
-    `select id, inc_no, hazard, rooms, created_at, text, status, called911_by, called911_at
-       from incidents
-      where property_id = $1 and (status = 'active' or created_at > now() - make_interval(days => $2))
-      order by created_at desc, id desc`,
+    `select i.id, i.inc_no, i.hazard, i.rooms, i.created_at, i.text, i.status, s.name as called911_by, i.called911_at
+       from incidents i left join staff s on s.id = i.called911_by
+      where i.property_id = $1 and (i.status = 'active' or i.created_at > now() - make_interval(days => $2))
+      order by i.created_at desc, i.id desc`,
     [propertyId, INCIDENT_DAYS],
   );
   const logs = await loadLogs(q, "incident", rows.map((i) => i.id));
   return rows.map((i) => ({
     id: i.id, no: `INC-${pad(i.inc_no, 3)}`, hazard: i.hazard, rooms: i.rooms, createdAt: i.created_at.getTime(),
     text: i.text, status: i.status,
-    called911: i.called911_at ? { by: i.called911_by ?? "", at: i.called911_at.toISOString() } : undefined,
+    called911: i.called911_at ? { by: i.called911_by ?? MANAGER_SIGNER, at: i.called911_at.toISOString() } : undefined,
     log: logs.get(i.id) ?? [],
   }));
 }

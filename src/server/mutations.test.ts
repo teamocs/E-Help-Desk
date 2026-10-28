@@ -288,6 +288,24 @@ describe("cleaning and safety", () => {
     });
     expect(await labels(incidentId)).toContain(`BFP/911 called at ${at}`);
   });
+
+  it("shows who recorded the 911 call by name, not by id", async () => {
+    await db.query("update incidents set status = 'resolved' where status = 'active'"); // a new report would merge into an open one
+    const incidentId = id();
+    await run({ type: "raiseSafety", opId: id(), incidentId, room: "335", text: "usok", hazard: "smoke" });
+    await run({ type: "record911", opId: id(), incidentId, at: "2026-10-27T11:00:00.000Z" });
+    const inc = (await snapshot()).incidents.find((i) => i.id === incidentId);
+    expect(inc?.called911).toEqual({ by: "Maria Santos", at: "2026-10-27T11:00:00.000Z" });
+  });
+
+  it("says 'a manager' when an owner or manager account recorded the call", async () => {
+    await db.query("update incidents set status = 'resolved' where status = 'active'");
+    const incidentId = id();
+    await run({ type: "raiseSafety", opId: id(), incidentId, room: "336", text: "gas", hazard: "gas" });
+    await run({ type: "record911", opId: id(), incidentId, at: "2026-10-27T11:05:00.000Z" }, { ...ME, actorStaffId: null });
+    const inc = (await snapshot()).incidents.find((i) => i.id === incidentId);
+    expect(inc?.called911).toEqual({ by: "a manager", at: "2026-10-27T11:05:00.000Z" });
+  });
 });
 
 describe("idempotent replay", () => {
