@@ -72,3 +72,10 @@ Still open: there is no CAPTCHA, and Neon Auth sign-up and email-code sending ar
 - **Dashboard per role:** `src/app/dashboard/Account.tsx` draws every state from one data object: owner (invite, revoke, "Right now" counts per property), manager (counts, leave), shared phone (how it works, one way into the desk), no hotel (setup form with a code), unverified (code entry). In development only, `/dev/owner`, `/dev/manager`, `/dev/device`, `/dev/empty`, `/dev/unverified` and `/dev/no-hotel` show them from fixture data. They return 404 in a production build.
 - **Deploy order for this sprint:** migrations 0006 and 0007 go to production together with the app. 0007 drops the old five-argument `create_org`, so hotel creation fails briefly if the database and the app are out of step; everything else keeps working. No hotel can be created until OCS issues a code: `node --env-file=.env.neon-main db/issue-code.mjs --uses 1 --days 14 --note "Hotel name, owner"`.
 - **Still open:** connect GitHub to Vercel (needs a GitHub Login Connection on the Teamocsph Vercel account, then `vercel git connect`), CAPTCHA or rate limit on Neon Auth sign-up itself, per-property staff scoping.
+
+## Workflow (decided 2026-10-28, owner-approved)
+
+- Work directly on `main`: no feature branches, worktrees or PRs. Only the owner and Claude work in this repo, and the project is not live yet.
+- Every push to `main` deploys to production through the Vercel GitHub connection.
+- Database migrations are the exception: apply them to production (`db/apply.mjs` with `.env.neon-main`) before pushing code that needs them. Dev branch first, then production.
+- Still run `tsc`, lint, tests and build before pushing.
