@@ -69,7 +69,7 @@ export function StaffAdmin() {
                   }
                 }}
               >
-                <input className="field" inputMode="numeric" autoComplete="off" maxLength={4} placeholder="New PIN" aria-label={`New PIN for ${p.name}`} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} style={{ width: '6.5rem' }} />
+                <input className="field" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={4} placeholder="New PIN" aria-label={`New PIN for ${p.name}`} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} style={{ width: '6.5rem' }} />
                 <button type="submit" className="btn btn-fill btn-sm" disabled={busy || newPin.length !== 4}>Save</button>
               </form>
             ) : (
@@ -97,7 +97,7 @@ export function StaffAdmin() {
               {(Object.keys(DEPTS) as Dept[]).map((d) => <option key={d} value={d}>{DEPTS[d].label}</option>)}
             </select>
           </div>
-          <div className="row"><input className="field" inputMode="numeric" autoComplete="off" maxLength={4} placeholder="Four-digit PIN" aria-label="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required /></div>
+          <div className="row"><input className="field" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={4} placeholder="Four-digit PIN" aria-label="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required /></div>
         </Group>
         {error && <div className="banner bad" role="alert" style={{ marginTop: 12 }}><span className="t-sub">{error}</span></div>}
         <div style={{ marginTop: 12 }}>

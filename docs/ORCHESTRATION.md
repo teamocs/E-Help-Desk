@@ -64,3 +64,11 @@ Creating a hotel now needs an invite code from OCS (migration 0007). Anyone can 
 4. To withdraw a code before it is used, run `update signup_codes set uses_left = 0 where note = '...'` as the owner. `used_by_org` and `used_at` show which hotel used each code.
 
 Still open: there is no CAPTCHA, and Neon Auth sign-up and email-code sending are not rate limited by us (Neon manages that). Spam accounts can still be created, but they cannot create hotels. Deploy migration 0007 and the new `createHotel` together, because the old five-argument `create_org` is dropped.
+
+## Sprint 8: page structure, sign-up codes, handover (DRAFT)
+
+- **Routing (Jev):** the page-structure work went to Sonnet (0.94); sign-up abuse controls and server-side handover went to Opus (0.98 and 1.0), run as parallel agents on separate files, then reviewed by `security-reviewer`.
+- **Page frame:** sign-in, verification, hotel setup, the account dashboard, 404 and error pages all use `src/ui/frame.tsx` (brand header, skip link, `main` landmark, footer). Each route has its own page title. `/gpt-taste` was used only for the sign-in and sign-up panel, in the restrained Apple style (no GSAP or stock images): the operator app keeps the existing design system.
+- **Dashboard per role:** `src/app/dashboard/Account.tsx` draws every state from one data object: owner (invite, revoke, "Right now" counts per property), manager (counts, leave), shared phone (how it works, one way into the desk), no hotel (setup form with a code), unverified (code entry). In development only, `/dev/owner`, `/dev/manager`, `/dev/device`, `/dev/empty`, `/dev/unverified` and `/dev/no-hotel` show them from fixture data. They return 404 in a production build.
+- **Deploy order for this sprint:** migrations 0006 and 0007 go to production together with the app. 0007 drops the old five-argument `create_org`, so hotel creation fails briefly if the database and the app are out of step; everything else keeps working. No hotel can be created until OCS issues a code: `node --env-file=.env.neon-main db/issue-code.mjs --uses 1 --days 14 --note "Hotel name, owner"`.
+- **Still open:** connect GitHub to Vercel (needs a GitHub Login Connection on the Teamocsph Vercel account, then `vercel git connect`), CAPTCHA or rate limit on Neon Auth sign-up itself, per-property staff scoping.

@@ -10,7 +10,7 @@ export interface TeamMember {
   claimed: boolean;
 }
 
-/** Owners and managers of the hotel. Only an owner sees the invite form and the revoke buttons. */
+/** Everyone with a login to this hotel: owners, managers and shared phones. Only an owner sees the invite form and the revoke buttons. */
 export function Team({ members, isOwner, canLeave }: { members: TeamMember[]; isOwner: boolean; canLeave: boolean }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -35,11 +35,11 @@ export function Team({ members, isOwner, canLeave }: { members: TeamMember[]; is
 
   return (
     <>
-      <h2 className="group-title">Owners and managers</h2>
+      <h2 className="group-title" id="people">People with a login</h2>
       <div className="group">
         {members.map((m) => (
           <div key={m.email} className="row">
-            <span className="grow">
+            <span className="grow" style={{ overflowWrap: "anywhere" }}>
               {m.email}
               <span className="t-foot c2" style={{ display: "block", textTransform: "capitalize" }}>
                 {m.role === "device" ? "Shared phone" : m.role}
@@ -80,7 +80,7 @@ export function Team({ members, isOwner, canLeave }: { members: TeamMember[]; is
           )}
           <div className="group">
             <div className="row">
-              <input className="field" type="email" placeholder="Email address" aria-label="Email address to invite" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input className="field" type="email" placeholder="Email address" aria-label="Email address to invite" autoComplete="off" spellCheck={false} autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="row">
               <select className="field" aria-label="Account type" value={role} onChange={(e) => setRole(e.target.value as "manager" | "device")}>

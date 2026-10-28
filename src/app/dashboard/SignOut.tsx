@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth/client";
 import { pinSignOut } from "@/app/app/staff";
 
-export function SignOut() {
+export function SignOut({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   return (
     <button
       type="button"
-      className="btn btn-gray btn-block"
+      className={compact ? "btn btn-gray btn-sm" : "btn btn-gray btn-block"}
       onClick={async () => {
         await pinSignOut(); // the acting-staff cookie must not outlive the device account's session
         await authClient.signOut();
