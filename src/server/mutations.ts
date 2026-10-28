@@ -8,7 +8,7 @@ import { OPEN_STATUSES, select } from "./snapshot";
 // its first event row, then write. See the idempotency note at the top of db/migrations/0001_init.sql.
 
 type Cmd<T extends Command["type"]> = Extract<Command, { type: T }>;
-type Entity = "request" | "item" | "work_order" | "clean_task" | "incident";
+type Entity = "request" | "item" | "work_order" | "clean_task" | "incident" | "handover";
 type Extra = { ticketNo?: number; woNo?: number; incidentNo?: number; clusteredInto?: string };
 interface Run { q: Q; ctx: Ctx; opId: string }
 
@@ -21,6 +21,9 @@ const ALERT = "Safety words detected. Duty manager and Security alerted over the
 const LOCKED_911 = "The 911 call is already recorded for this incident";
 const ESCALATE_ONLY = "Only on-site Engineering or IT items can become work orders.";
 const NO_ITEM = "Unknown item";
+const NOTE_MAX = 1000; // handovers.note check
+const MAX_RETURN = 500;
+const RETURNED = "Returned to department queue at shift end";
 
 /** The client's firstOf(): first on-shift staff member of the item's department. */
 const FIRST_ON_SHIFT = `(select s.id from staff s where s.dept = items.dept and s.on_shift and s.active and s.role = 'staff'
@@ -69,6 +72,8 @@ function dispatch(r: Run, cmd: Command): Promise<CommandResult> {
     case "raiseSafety": return raiseSafety(r, cmd);
     case "downgradeIncident": case "resolveIncident": return setIncidentStatus(r, cmd);
     case "record911": return record911(r, cmd);
+    case "ackHandover": return ackHandover(r, cmd);
+    case "returnOrphans": return returnOrphans(r, cmd);
     default: return bad("Unknown command");
   }
 }
@@ -433,5 +438,45 @@ async function record911(r: Run, cmd: Cmd<"record911">): Promise<CommandResult> 
     if (e instanceof Error && e.message.includes(LOCKED_911)) return fail(LOCKED_911);
     throw e;
   }
+  return ok();
+}
+
+/* ---------- handover ---------- */
+
+async function ackHandover(r: Run, cmd: Cmd<"ackHandover">): Promise<CommandResult> {
+  if (cmd.note !== undefined && typeof cmd.note !== "string") return fail("The note must be text");
+  const note = trimmed(cmd.note);
+  if (note.length > NOTE_MAX) return fail(`Keep the note under ${NOTE_MAX} characters`);
+  const [dup] = await select(r.q, "select 1 from handovers where id = $1", [cmd.handoverId]);
+  if (dup) return fail("This handover is already signed off");
+  if (!(await addEvent(r, "handover", cmd.handoverId, "Handover acknowledged"))) return replayed(r, cmd);
+  await r.q(
+    "insert into handovers (id, org_id, property_id, signed_by, note, op_id) values ($1, $2, $3, $4, $5, $6)",
+    [cmd.handoverId, r.ctx.orgId, r.ctx.propertyId, r.ctx.actorStaffId, note || null, r.opId],
+  );
+  return ok();
+}
+
+/** The client's returnOrphans(): open items whose assignee is off shift (or removed) go back to the department queue. */
+async function returnOrphans(r: Run, cmd: Cmd<"returnOrphans">): Promise<CommandResult> {
+  const ids = cmd.itemIds;
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > MAX_RETURN || new Set(ids).size !== ids.length) {
+    return fail("Choose the items to return");
+  }
+  const rows = await select<{ id: string; orphaned: boolean }>(
+    r.q,
+    `select i.id, (i.status = any($3::text[]) and i.assignee is not null and not coalesce(s.on_shift and s.active, false)) as orphaned
+       from items i left join staff s on s.id = i.assignee
+      where i.id = any($1::uuid[]) and i.property_id = $2
+      order by i.created_at, i.id
+        for update of i`,
+    [ids, r.ctx.propertyId, OPEN_STATUSES],
+  );
+  if (rows.length !== ids.length) return fail(NO_ITEM);
+  const orphans = rows.filter((x) => x.orphaned).map((x) => x.id);
+  if (!orphans.length) return fail("Nothing to return. These items already have someone on shift.");
+  if (!(await addEvent(r, "item", orphans[0], RETURNED))) return replayed(r, cmd);
+  for (const itemId of orphans.slice(1)) await addEvent(r, "item", itemId, RETURNED);
+  await r.q("update items set assignee = null where id = any($1::uuid[])", [orphans]);
   return ok();
 }

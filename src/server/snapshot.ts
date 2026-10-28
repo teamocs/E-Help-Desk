@@ -4,6 +4,7 @@ import type {
   CleanStatus,
   CleanTask,
   Dept,
+  Handover,
   Hazard,
   HoldReason,
   Incident,
@@ -79,6 +80,7 @@ export async function loadSnapshot(q: Q, orgId: string, propertyId: string): Pro
     wos: await loadWorkOrders(q, propertyId),
     cleaning: await loadCleaning(q, propertyId),
     incidents: await loadIncidents(q, propertyId),
+    handover: await loadHandover(q, propertyId),
     seq: { t: p.ticket_seq, wo: p.wo_seq, inc: p.inc_seq, id: 0 },
     at: p.now.getTime(),
   };
@@ -189,6 +191,22 @@ async function loadCleaning(q: Q, propertyId: string): Promise<CleanTask[]> {
     [propertyId, CLEAN_DONE_HOURS],
   );
   return rows.map((c) => ({ id: c.id, room: c.room, type: c.type, status: c.status, assignee: opt(c.assignee) }));
+}
+
+/** Who signed off when no staff member was signed in with a PIN (the owner or manager account). */
+export const MANAGER_SIGNER = "a manager";
+
+async function loadHandover(q: Q, propertyId: string): Promise<Handover> {
+  const [h] = await select<{ signed_at: Date; name: string | null }>(
+    q,
+    `select h.signed_at, s.name
+       from handovers h left join staff s on s.id = h.signed_by
+      where h.property_id = $1
+      order by h.signed_at desc, h.id desc
+      limit 1`,
+    [propertyId],
+  );
+  return h ? { ackBy: h.name ?? MANAGER_SIGNER, ackAt: h.signed_at.getTime() } : {};
 }
 
 async function loadIncidents(q: Q, propertyId: string): Promise<Incident[]> {

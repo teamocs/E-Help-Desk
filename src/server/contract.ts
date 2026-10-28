@@ -12,6 +12,7 @@ import type {
   CleanStatus,
   CleanTask,
   Dept,
+  Handover,
   Hazard,
   HoldReason,
   Incident,
@@ -31,6 +32,8 @@ export interface Snapshot {
   wos: WorkOrder[];
   cleaning: CleanTask[];
   incidents: Incident[];
+  /** The property's latest handover sign-off, or {} when there is none. */
+  handover: Handover;
   /** Counters for the optimistic ticket numbers. `id` is unused and always 0. */
   seq: Seq;
   /** Server time when the snapshot was read. */
@@ -75,7 +78,11 @@ export type Command =
   | (Base & { type: "raiseSafety"; incidentId: string; room: string; text: string; hazard: Hazard })
   | (Base & { type: "downgradeIncident" | "resolveIncident"; incidentId: string })
   /** `at` is the time the call was made, as an ISO string from the device. */
-  | (Base & { type: "record911"; incidentId: string; at: string });
+  | (Base & { type: "record911"; incidentId: string; at: string })
+  /** `handoverId` is the new sign-off row's id. The acting staff member signs. */
+  | (Base & { type: "ackHandover"; handoverId: string; note?: string })
+  /** Clear the assignee of these open items whose owner is off shift, putting them back in the department queue. */
+  | (Base & { type: "returnOrphans"; itemIds: string[] });
 
 export type CommandResult =
   | {

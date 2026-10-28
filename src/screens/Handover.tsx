@@ -4,6 +4,9 @@ import { ackHandover, returnOrphans, setUI, useApp } from '../domain/store';
 import { springs } from '../lib/motion';
 import { Button, DeptChip, Group, Icon, NetPill, Pill, Row, Screen } from '../ui/kit';
 
+/** A sign-off older than one shift belongs to an earlier handover, so the next officer can sign again. */
+const SHIFT_MS = 8 * 3_600_000;
+
 export function Handover() {
   const items = useApp((s) => s.items);
   const requests = useApp((s) => s.requests);
@@ -63,13 +66,20 @@ export function Handover() {
       )}
 
       <div style={{ marginTop: 22 }}>
-        {ack.ackAt ? (
+        {ack.ackAt && now - ack.ackAt < SHIFT_MS ? (
           <motion.div className="banner ok" initial={{ scale: 0.96, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springs.gentle} role="status">
             <Icon name="tick" weight="fill" />
             <span><b>Acknowledged by {ack.ackBy}</b> at {new Date(ack.ackAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}. The outgoing officer is released.</span>
           </motion.div>
         ) : (
-          <Button size="lg" block feel="success" onClick={ackHandover}>Acknowledge handover</Button>
+          <>
+            <Button size="lg" block feel="success" onClick={ackHandover}>Acknowledge handover</Button>
+            {ack.ackAt ? (
+              <p className="t-sub c2" style={{ marginTop: 8 }}>
+                Last signed off by {ack.ackBy} on {new Date(ack.ackAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}.
+              </p>
+            ) : null}
+          </>
         )}
       </div>
     </Screen>
