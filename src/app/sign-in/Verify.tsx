@@ -53,13 +53,16 @@ export function Verify({ email }: { email: string }) {
       ) : (
         <form onSubmit={verify}>
           <div className="group">
-            <div className="row">
+            <div className="field-wrap">
+              <label className="field-label" htmlFor="code">Verification code</label>
               <input
+                id="code"
+                name="code"
                 className="field"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                placeholder="Code from your email"
-                aria-label="Verification code"
+                spellCheck={false}
+                placeholder="6-digit code from your email"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 required

@@ -3,6 +3,7 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { isOpen } from './domain/rules';
 import { app, go, lock, myStaff, openComposer, paperMode, setUI, syncPrefs, tick, useApp, useUI, type Tab } from './domain/store';
 import type { State } from './domain/types';
+import { staffApi } from './domain/staffApi';
 import { haptic } from './lib/haptics';
 import { springs } from './lib/motion';
 import { Guide, STEP_COUNT } from './demo/Guide';
@@ -51,6 +52,14 @@ const openRequests = (s: State) => s.requests.filter((r) => r.itemIds.some((id) 
 /** Server-backed mode hides the demo-only Network simulator. */
 const visibleNav = (isRemote: boolean) => (isRemote ? NAV.filter((n) => n.tab !== 'network') : NAV);
 const leave = () => window.location.assign('/dashboard');
+/** Back to the PIN screen. On a shared phone the previous person is signed out first, so nobody inherits their name. */
+async function switchPerson(deviceOnly: boolean) {
+  if (deviceOnly) {
+    await staffApi.current?.signOut();
+    app.set((s) => ({ ...s, me: null }));
+  }
+  lock();
+}
 
 function Sidebar() {
   const tab = useUI((s) => s.tab);
@@ -59,6 +68,7 @@ function Sidebar() {
   const me = useApp(myStaff);
   const guide = useUI((s) => s.guide);
   const isRemote = useUI((s) => s.remote);
+  const deviceOnly = useUI((s) => s.deviceOnly);
   return (
     <nav className="side" aria-label="Main">
       <div className="brand">
@@ -80,10 +90,15 @@ function Sidebar() {
           <Icon name="play" /> Guided demo
         </button>
       )}
-      <button type="button" className="side-item" onClick={() => { haptic('select'); if (isRemote) leave(); else lock(); }}>
+      <button type="button" className="side-item" onClick={() => { haptic('select'); void switchPerson(deviceOnly); }}>
         <Avatar staff={me} />
-        <span style={{ textAlign: 'left', minWidth: 0 }}><span className="t-sub ellip" style={{ display: 'block', fontWeight: 600 }}>{me?.name}</span><span className="t-cap c2">{isRemote ? 'Account' : 'Tap to switch'}</span></span>
+        <span style={{ textAlign: 'left', minWidth: 0 }}><span className="t-sub ellip" style={{ display: 'block', fontWeight: 600 }}>{me?.name}</span><span className="t-cap c2">Switch person</span></span>
       </button>
+      {isRemote && (
+        <button type="button" className="side-item" onClick={() => { haptic('select'); leave(); }}>
+          <Icon name="home" /> Hotel account
+        </button>
+      )}
     </nav>
   );
 }
@@ -128,6 +143,7 @@ function PaperBanner() {
 
 function Sheets({ inspector }: { inspector: boolean }) {
   const isRemote = useUI((s) => s.remote);
+  const deviceOnly = useUI((s) => s.deviceOnly);
   const sheet = useUI((s) => s.sheet);
   const selItem = useUI((s) => s.selItem);
   const selWo = useUI((s) => s.selWo);
@@ -146,7 +162,8 @@ function Sheets({ inspector }: { inspector: boolean }) {
           {visibleNav(isRemote).slice(4).map((n) => <Row key={n.tab} icon={n.icon} tint="var(--accent)" title={n.label} chevron onClick={() => go(n.tab)} />)}
           {!isRemote && <Row icon="play" tint="var(--accent)" title="Guided demo" chevron onClick={() => setUI({ guide: true, sheet: 'demo' })} />}
           <Row icon="printer" title="Paper kit" chevron onClick={() => setUI({ sheet: 'paper' })} />
-          <Row icon="user" title={isRemote ? 'Account' : 'Switch person'} chevron onClick={isRemote ? leave : lock} />
+          <Row icon="user" title="Switch person" chevron onClick={() => void switchPerson(deviceOnly)} />
+          {isRemote && <Row icon="home" title="Hotel account" chevron onClick={leave} />}
         </Group>
       </Sheet>
       <Sheet open={sheet === 'demo' && tier !== 'wide'} title="Guided demo" onClose={close}><Guide /></Sheet>

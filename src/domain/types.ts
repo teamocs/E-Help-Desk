@@ -99,6 +99,9 @@ export interface Incident {
   log: ItemEvent[];
 }
 
+/** The latest shift handover sign-off. Empty until someone signs off. */
+export interface Handover { ackBy?: string; ackAt?: number }
+
 export interface Op { id: string; label: string; at: number; synced: boolean }
 
 export interface Net {
@@ -149,7 +152,7 @@ export interface State {
   reconciling: boolean;
   stationB: { requests: number; open: number; lastSync: number };
   netlog: { at: number; text: string }[];
-  handover: { ackBy?: string; ackAt?: number };
+  handover: Handover;
   prefs: Prefs;
   toasts: Toast[];
   announce: string;

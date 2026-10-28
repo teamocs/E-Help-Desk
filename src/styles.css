@@ -308,3 +308,65 @@ textarea.field { resize: none; min-height: 3.2rem; line-height: 1.35; }
 .cover-foot div { padding: 14px 18px; border-top: 0.5px solid rgba(255, 255, 255, 0.22); color: rgba(255, 255, 255, 0.82); font-size: 0.9375rem; line-height: 1.4; }
 .cover-foot b { display: block; color: #fff; font-weight: 600; margin-bottom: 2px; }
 .cover-note { text-align: center; font-size: 0.8125rem; color: rgba(255, 255, 255, 0.6); padding: 0 16px calc(18px + env(safe-area-inset-bottom)); }
+
+/* ---------- Page frame: sign-in and the account pages. The desk (/app) has its own shell. ---------- */
+.pf { height: 100dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--bg); display: flex; flex-direction: column; scroll-padding-top: 4.5rem; }
+.pf-head { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left)); background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); border-bottom: 0.5px solid var(--sep); }
+.pf-brand { display: flex; align-items: center; gap: 10px; min-height: var(--hit); color: var(--fg); text-decoration: none; font: 700 1.0625rem var(--font); }
+.pf-brand .brand-mark { width: 2rem; height: 2rem; border-radius: 9px; flex: none; }
+.pf-brand small { display: block; color: var(--fg-2); font: 400 0.75rem var(--font); }
+.pf-head .grow { flex: 1; min-width: 0; }
+.pf-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pf-who .t-sub { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-main { width: min(60rem, 100%); margin: 0 auto; padding: 1.5rem max(16px, env(safe-area-inset-right)) 3rem max(16px, env(safe-area-inset-left)); flex: 1; }
+.pf-main:focus { outline: none; }
+.pf-foot { padding: 1.5rem 16px calc(1.5rem + env(safe-area-inset-bottom)); text-align: center; color: var(--fg-2); font: 400 0.8125rem var(--font); }
+.pf-foot a { color: inherit; }
+
+.pf-auth-grid { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); }
+.pf-side { display: none; }
+.pf-auth-main { display: grid; place-items: center; padding: 1.5rem max(16px, env(safe-area-inset-right)) 3rem max(16px, env(safe-area-inset-left)); }
+.pf-auth-main:focus { outline: none; }
+.pf-card { width: min(26rem, 100%); }
+.pf-card .lead-in { margin: 0.4rem 0 1.25rem; color: var(--fg-2); }
+@media (min-width: 900px) {
+  .pf-auth-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .pf-side { display: flex; flex-direction: column; justify-content: center; gap: 2rem; padding: 3rem clamp(2rem, 5vw, 4.5rem); background: var(--accent-soft); border-right: 0.5px solid var(--sep); }
+  .pf-auth-main { padding: 3rem; }
+}
+.pf-side h2 { margin: 0; max-width: 22ch; font: 700 clamp(1.9rem, 3vw, 2.6rem)/1.1 var(--font); letter-spacing: -0.03em; text-wrap: balance; }
+.pf-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.1rem; max-width: 30rem; }
+.pf-points li { display: flex; gap: 12px; align-items: flex-start; }
+.pf-points .pf-ico { width: 2.25rem; height: 2.25rem; border-radius: 10px; flex: none; display: grid; place-items: center; background: var(--surface); color: var(--accent); }
+.pf-points b { display: block; font: 600 1rem var(--font); }
+.pf-points span { color: var(--fg-2); font: 400 0.9375rem/1.4 var(--font); }
+
+.pf-title { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.75rem 1rem; margin-bottom: 0.25rem; }
+.pf-title .t-sub { margin: 0.35rem 0 0; }
+.role-chip { display: inline-flex; align-items: center; padding: 0.15rem 0.65rem; border-radius: 99px; background: var(--accent-soft); color: var(--accent); font: 600 0.75rem/1.5 var(--font); white-space: nowrap; }
+.pf-section { margin-top: 1.75rem; }
+.pf-section > .group-title { padding-top: 0; }
+.pf-cta { display: grid; gap: 10px; margin-top: 1.25rem; }
+@media (min-width: 640px) { .pf-cta { grid-template-columns: 2fr 1fr; } }
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border-radius: var(--r-card); padding: 0.9rem 1rem; display: grid; gap: 0.15rem; min-width: 0; }
+.stat b { font: 700 1.9rem/1.1 var(--font); font-variant-numeric: tabular-nums; }
+.stat span { color: var(--fg-2); font: 400 0.8125rem/1.3 var(--font); }
+.stat.warn b { color: var(--warn); } .stat.bad b { color: var(--bad); } .stat.ok b { color: var(--ok); }
+.pf-prop { display: grid; gap: 12px; }
+.pf-prop h3 { margin: 0 0 0.5rem; padding: 0 4px; font: 600 1rem var(--font); }
+.field-label { display: block; margin: 0 0 0.3rem; padding: 0 2px; color: var(--fg-2); font: 500 0.8125rem var(--font); }
+.field-err { margin: 0.3rem 2px 0; color: var(--bad); font: 400 0.8125rem/1.3 var(--font); }
+.field-wrap { padding: 0.5rem 0.75rem; }
+.field-row { display: flex; gap: 8px; align-items: center; }
+.field-row .btn { flex: none; }
+.pf-empty { padding: 1.25rem 16px; color: var(--fg-2); text-align: center; }
+a.btn, a.btn:hover { text-decoration: none; }
+.pf-steps { margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.pf-steps li { counter-increment: step; display: flex; gap: 12px; align-items: flex-start; padding: 0.85rem 16px; position: relative; }
+.pf-steps li + li::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 0.5px; background: var(--sep); }
+.pf-steps li::after { content: counter(step); order: -1; flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font: 700 0.8125rem var(--font); }
+.pf-brand > span:last-child { white-space: nowrap; }
+.pf-section .group-title, .pf-section > .group-title { padding: 0 4px 0.5rem; }
+@media (max-width: 639px) { .pf-who .t-sub { display: none; } }

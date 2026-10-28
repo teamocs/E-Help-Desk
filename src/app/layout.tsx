@@ -7,7 +7,7 @@ const geist = Geist({ subsets: ["latin"], variable: "--font-geist", display: "sw
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Azalea e-Helpdesk",
+  title: { default: "Azalea e-Helpdesk", template: "%s · Azalea e-Helpdesk" },
   description: "Service requests, work orders and shift handover for hotels.",
 };
 

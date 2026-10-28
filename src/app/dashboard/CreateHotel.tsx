@@ -9,6 +9,7 @@ export function CreateHotel({ email }: { email: string }) {
   const router = useRouter();
   const [org, setOrg] = useState("");
   const [property, setProperty] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -16,7 +17,7 @@ export function CreateHotel({ email }: { email: string }) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const r = await createHotel(org, property);
+    const r = await createHotel(org, property, code);
     setBusy(false);
     if (!r.ok) return setError(r.error);
     router.refresh();
@@ -34,15 +35,22 @@ export function CreateHotel({ email }: { email: string }) {
         </div>
       )}
       <div className="group">
-        <div className="row">
-          <input className="field" placeholder="Hotel or group name" aria-label="Hotel or group name" maxLength={80} value={org} onChange={(e) => setOrg(e.target.value)} required />
+        <div className="field-wrap">
+          <label className="field-label" htmlFor="org">Hotel or group name</label>
+          <input id="org" name="organization" className="field" autoComplete="organization" placeholder="Azalea Hotels" maxLength={80} value={org} onChange={(e) => setOrg(e.target.value)} required />
         </div>
-        <div className="row">
-          <input className="field" placeholder="First property, e.g. Boracay" aria-label="First property name" maxLength={80} value={property} onChange={(e) => setProperty(e.target.value)} required />
+        <div className="field-wrap">
+          <label className="field-label" htmlFor="property">First property</label>
+          <input id="property" name="property" className="field" autoComplete="off" placeholder="Azalea Boracay" maxLength={80} value={property} onChange={(e) => setProperty(e.target.value)} required />
+        </div>
+        <div className="field-wrap">
+          <label className="field-label" htmlFor="code">Setup code</label>
+          <input id="code" name="setup-code" className="field" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="Paste the code you were given" aria-describedby="code-help" value={code} onChange={(e) => setCode(e.target.value.trim())} required />
+          <p id="code-help" className="t-foot c2" style={{ margin: "6px 2px 0" }}>New hotels are set up with a one-time code from OCS. Don’t have one yet? Ask OCS, or ask your hotel’s owner to invite you instead.</p>
         </div>
       </div>
-      <button type="submit" className="btn btn-fill btn-lg btn-block" style={{ marginTop: 14 }} disabled={busy || !org.trim() || !property.trim()}>
-        {busy ? "Creating…" : "Create my hotel"}
+      <button type="submit" className="btn btn-fill btn-lg btn-block" style={{ marginTop: 14 }} disabled={busy || !org.trim() || !property.trim() || !code}>
+        {busy ? "Creating your hotel…" : "Create my hotel"}
       </button>
     </form>
   );

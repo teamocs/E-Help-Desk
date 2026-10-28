@@ -17,6 +17,8 @@ const BORACAY = "a0a0a0a0-0000-4000-8000-000000000011";
 const BAGUIO = "a0a0a0a0-0000-4000-8000-000000000012";
 const MARIA = "a0a0a0a0-0000-4000-8000-000000000101";
 const RAMON = "a0a0a0a0-0000-4000-8000-000000000103";
+/** Seeded off shift. */
+const DENNIS = "a0a0a0a0-0000-4000-8000-000000000108";
 const OTHER = "b0b0b0b0-0000-4000-8000-000000000001";
 const OTHER_PROPERTY = "b0b0b0b0-0000-4000-8000-000000000011";
 const ME: Ctx = { orgId: AZALEA, propertyId: BORACAY, actorStaffId: MARIA };
@@ -77,8 +79,8 @@ const cleanStatus = async (taskId: string) =>
 /** Everything a replay could change: row contents, event count and the counters. */
 async function fingerprint() {
   const hash = (t: string) => `(select md5(coalesce(string_agg(x::text, '|' order by x.id), '')) from ${t} x)`;
-  const tables = ["requests", "items", "work_orders", "clean_tasks", "incidents", "properties"];
-  return (await db.query(`select (select count(*) from events)::int as events, ${tables.map((t) => `${hash(t)} as ${t}`).join(", ")}`)).rows[0];
+  const tables = ["requests", "items", "work_orders", "clean_tasks", "incidents", "handovers", "properties"];
+  return (await db.query<{ events: number }>(`select (select count(*) from events)::int as events, ${tables.map((t) => `${hash(t)} as ${t}`).join(", ")}`)).rows[0];
 }
 
 /** Applies a command, then applies it again and checks the second time changed nothing. */
@@ -103,6 +105,7 @@ beforeAll(async () => {
   db = new PGlite();
   await db.exec(read("migrations/0001_init.sql"));
   await db.exec(read("migrations/0002_rls.sql"));
+  await db.exec(read("migrations/0006_handover.sql"));
   await db.exec(read("seed.sql"));
   await db.query("insert into orgs (id, name) values ($1, 'Other Hotel')", [OTHER]);
   await db.query("insert into properties (id, org_id, name) values ($1, $2, 'Other Main')", [OTHER_PROPERTY, OTHER]);
@@ -424,6 +427,115 @@ describe("loadSnapshot", () => {
     expect(s.incidents.map((i) => i.text)).not.toContain("inc-9001");
     expect(s.cleaning.map((c) => c.room)).toContain("362-open");
     expect(s.cleaning.map((c) => c.room)).not.toContain("362-done");
+  });
+});
+
+describe("handover", () => {
+  const ack = (ctx = ME, extra: { note?: string } = {}) => {
+    const handoverId = id();
+    return { handoverId, res: run({ type: "ackHandover", opId: id(), handoverId, ...extra }, ctx) };
+  };
+  const handoverRow = async (handoverId: string) =>
+    (await db.query<{ org_id: string; property_id: string; signed_by: string | null; note: string | null }>(
+      "select org_id, property_id, signed_by, note from handovers where id = $1", [handoverId])).rows[0];
+  /** An open item assigned straight to `who`, as if relayed before they went off shift. */
+  async function assigned(room: string, who: string) {
+    const { itemIds: [it] } = await logged(room, ["ac"]);
+    await step("relay", it);
+    await db.query("update items set assignee = $2 where id = $1", [it, who]);
+    return it;
+  }
+
+  it("records the sign-off with the acting staff member and shows it in the snapshot", async () => {
+    const { handoverId, res } = ack(ME, { note: "  Pool light still out  " });
+    expect(await res).toEqual({ ok: true, applied: true });
+    expect(await handoverRow(handoverId)).toEqual({ org_id: AZALEA, property_id: BORACAY, signed_by: MARIA, note: "Pool light still out" });
+    expect(await labels(handoverId)).toEqual(["Handover acknowledged"]);
+    const s = await snapshot();
+    expect(s.handover).toEqual({ ackBy: "Maria Santos", ackAt: expect.any(Number) });
+    expect(Math.abs((s.handover.ackAt ?? 0) - s.at)).toBeLessThan(60_000);
+  });
+
+  it("a sign-off by the owner or manager account has no staff row", async () => {
+    const { handoverId, res } = ack({ ...ME, actorStaffId: null });
+    expect(await res).toMatchObject({ ok: true, applied: true });
+    expect((await handoverRow(handoverId)).signed_by).toBeNull();
+    expect((await snapshot()).handover).toMatchObject({ ackBy: "a manager" });
+  });
+
+  it("replaying the same op id records one sign-off", async () => {
+    const handoverId = id();
+    await twice({ type: "ackHandover", opId: id(), handoverId });
+    expect((await db.query("select 1 from handovers where id = $1", [handoverId])).rows).toHaveLength(1);
+  });
+
+  it("refuses a long note or a reused sign-off id and writes nothing", async () => {
+    const before = await fingerprint();
+    expect((await ack(ME, { note: "x".repeat(1001) }).res).ok).toBe(false);
+    const { handoverId, res } = ack();
+    await res;
+    const after = await fingerprint();
+    expect(await run({ type: "ackHandover", opId: id(), handoverId })).toEqual({ ok: false, error: "This handover is already signed off" });
+    expect(await fingerprint()).toEqual(after);
+    expect(after.events).toBe(before.events + 1);
+  });
+
+  it("another org cannot see, change or forge a sign-off", async () => {
+    const { handoverId, res } = ack();
+    await res;
+    const them: Ctx = { orgId: OTHER, propertyId: OTHER_PROPERTY, actorStaffId: null };
+    expect((await asApp(OTHER, () => q("select 1 from handovers"))).rows).toHaveLength(0);
+    expect((await asApp(OTHER, () => loadSnapshot(q, OTHER, OTHER_PROPERTY))).handover).toEqual({});
+    expect(await run({ type: "ackHandover", opId: id(), handoverId: id() }, { ...them, propertyId: BORACAY })).toEqual({ ok: false, error: "Unknown property" });
+    await expect(asApp(OTHER, () =>
+      q("insert into handovers (id, org_id, property_id, op_id) values ($1, $2, $3, $4)", [id(), AZALEA, BORACAY, id()]))).rejects.toThrow();
+    // app_user may only add and read sign-offs, in any org.
+    for (const sql of ["update handovers set note = 'x' where id = $1", "delete from handovers where id = $1"]) {
+      await expect(asApp(AZALEA, () => q(sql, [handoverId]))).rejects.toThrow(/permission denied/);
+    }
+  });
+
+  it("returns orphaned items to the department queue and logs it", async () => {
+    const a = await assigned("381", DENNIS);
+    const b = await assigned("382", DENNIS);
+    const res = await run({ type: "returnOrphans", opId: id(), itemIds: [a, b] });
+    expect(res).toEqual({ ok: true, applied: true });
+    for (const it of [a, b]) {
+      expect(await itemRow(it)).toMatchObject({ status: "relayed", assignee: null });
+      expect(await labels(it)).toEqual(["Logged", "Relayed", "Returned to department queue at shift end"]);
+    }
+    const s = await snapshot();
+    expect(s.items[a].assignee).toBeUndefined();
+  });
+
+  it("skips items whose owner is back on shift, and refuses when none are orphaned", async () => {
+    const orphan = await assigned("383", DENNIS);
+    const kept = await assigned("384", RAMON);
+    expect(await run({ type: "returnOrphans", opId: id(), itemIds: [orphan, kept] })).toMatchObject({ ok: true, applied: true });
+    expect(await itemRow(kept)).toMatchObject({ assignee: RAMON });
+    const before = await fingerprint();
+    expect(await run({ type: "returnOrphans", opId: id(), itemIds: [kept] })).toEqual({
+      ok: false,
+      error: "Nothing to return. These items already have someone on shift.",
+    });
+    expect(await fingerprint()).toEqual(before);
+  });
+
+  it("refuses unknown, duplicate or missing item ids and writes nothing", async () => {
+    const orphan = await assigned("385", DENNIS);
+    const before = await fingerprint();
+    expect(await run({ type: "returnOrphans", opId: id(), itemIds: [orphan, id()] })).toEqual({ ok: false, error: "Unknown item" });
+    expect((await run({ type: "returnOrphans", opId: id(), itemIds: [orphan, orphan] })).ok).toBe(false);
+    expect((await run({ type: "returnOrphans", opId: id(), itemIds: [] })).ok).toBe(false);
+    expect((await run({ type: "returnOrphans", opId: id(), itemIds: ["not-a-uuid"] })).ok).toBe(false);
+    const them: Ctx = { orgId: OTHER, propertyId: OTHER_PROPERTY, actorStaffId: null };
+    expect(await run({ type: "returnOrphans", opId: id(), itemIds: [orphan] }, them)).toEqual({ ok: false, error: "Unknown item" });
+    expect(await fingerprint()).toEqual(before);
+    expect(await itemRow(orphan)).toMatchObject({ assignee: DENNIS });
+  });
+
+  it("replaying returnOrphans changes nothing", async () => {
+    await twice({ type: "returnOrphans", opId: id(), itemIds: [await assigned("386", DENNIS)] });
   });
 });
 

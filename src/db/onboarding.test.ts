@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
+import { insertCode } from "../../db/signup-code.mjs";
 
 // Self-serve onboarding: a verified user creates a hotel, the owner invites managers.
 // Runs the real migrations in an in-process Postgres and calls the functions as app_user.
@@ -26,8 +27,13 @@ async function asApp<T>(fn: () => Promise<T>, org = ""): Promise<T> {
   }
 }
 
-const createOrg = (user: string, email: string, verified: boolean, org = "Rose Hotel", prop = "Rose Main") =>
-  asApp(async () => (await db.query<{ org_id: string; property_id: string }>("select * from create_org($1, $2, $3, $4, $5)", [user, email, verified, org, prop])).rows[0]!);
+/** Issues a fresh single-use invite code as the owner (as db/issue-code.mjs does), then creates the hotel. */
+const createOrg = async (user: string, email: string, verified: boolean, org = "Rose Hotel", prop = "Rose Main") => {
+  const { code } = await insertCode((sql, params) => db.query(sql, params), { uses: 1, days: 7 });
+  const row = await asApp(async () => (await db.query<{ org_id: string; property_id: string; refusal: string | null }>("select * from create_org($1, $2, $3, $4, $5, $6)", [user, email, verified, org, prop, code])).rows[0]!);
+  if (row.refusal) throw new Error(row.refusal);
+  return row;
+};
 // The server runs these with the caller's org set, as tx(orgId, ...) does.
 const invite = (org: string, actor: string, email: string, role = "manager", setOrg = org) =>
   asApp(() => db.query("select invite_member($1, $2, $3, $4)", [org, actor, email, role]), setOrg);
@@ -46,6 +52,7 @@ beforeAll(async () => {
   await db.exec(read("migrations/0003_onboarding.sql"));
   await db.exec(read("migrations/0004_pin_throttle.sql"));
   await db.exec(read("migrations/0005_device_role.sql"));
+  await db.exec(read("migrations/0007_signup_codes.sql"));
   await db.exec(read("seed.sql"));
 });
 

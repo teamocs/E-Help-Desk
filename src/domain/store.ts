@@ -453,14 +453,14 @@ export function cleanSet(id: string, status: State['cleaning'][number]['status']
 }
 
 /* ---------- handover ---------- */
-// Handover sign-off and returning orphaned items are not stored on the server yet.
-const notSaved = () => toast('Handover sign-off is not saved to the server yet.', 'warn');
+/** The server names a sign-off by the owner or manager account this way (MANAGER_SIGNER in server/snapshot.ts). */
+const signer = (s: State) => (remote.active && s.me === 'member' ? 'a manager' : meName(s));
 export function ackHandover() {
-  if (remote.active) return notSaved();
-  commit('Handover acknowledged', (s) => ({ ...s, handover: { ackBy: meName(s), ackAt: s.now } }));
+  const handoverId = nid('h');
+  commit('Handover acknowledged', (s) => ({ ...s, handover: { ackBy: signer(s), ackAt: s.now } }));
+  send({ type: 'ackHandover', handoverId });
 }
 export function returnOrphans() {
-  if (remote.active) return notSaved();
   const s0 = app.get();
   const off = new Set(s0.staff.filter((p) => !p.onShift).map((p) => p.id));
   const ids = Object.values(s0.items).filter((i) => isOpen(i) && i.assignee && off.has(i.assignee)).map((i) => i.id);
@@ -469,6 +469,7 @@ export function returnOrphans() {
     ...s,
     items: Object.fromEntries(Object.entries(s.items).map(([k, i]) => [k, ids.includes(k) ? { ...i, assignee: undefined, events: [...i.events, ev(s, 'Returned to department queue at shift end')] } : i])),
   }), ids);
+  send({ type: 'returnOrphans', itemIds: ids });
   toast(`${ids.length} item${ids.length === 1 ? '' : 's'} returned to the department queue.`, 'success');
 }
 
@@ -525,6 +526,7 @@ export function applySnapshot(snap: Snapshot, member?: State['staff'][number]) {
     wos: snap.wos,
     cleaning: snap.cleaning,
     incidents: snap.incidents,
+    handover: snap.handover,
     seq: snap.seq,
   }));
 }

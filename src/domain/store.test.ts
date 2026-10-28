@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { app, assessWo, escalate, finishItem, hold, logRequest, onSite, raiseSafety, relay, resetApp, resume, setNet, setPref, transfer, undoEscalate, completeWo, unlock } from './store';
+import { ackHandover, app, applySnapshot, assessWo, escalate, finishItem, hold, logRequest, onSite, raiseSafety, relay, resetApp, resume, returnOrphans, setNet, setPref, transfer, undoEscalate, completeWo, unlock } from './store';
 import { detectSafety, hubUp, pad, sla } from './rules';
+import { memoryOutbox } from './outbox';
+import { remote } from './remote';
+import type { Command, Snapshot } from '../server/contract';
 import type { Net } from './types';
 
 beforeEach(() => {
@@ -235,6 +238,54 @@ describe('raiseSafety', () => {
     const inc = app.get().incidents.find((i) => i.id === first.id)!;
     expect(inc.rooms).toHaveLength(2);
     expect(app.get().incidents).toHaveLength(1);
+  });
+});
+
+describe('handover', () => {
+  const orphanIds = () => Object.values(app.get().items).filter((i) => i.assignee === 's-dennis' && ['new', 'relayed', 'on_site', 'on_hold'].includes(i.status)).map((i) => i.id);
+
+  it('demo: sign-off and orphan return change local state only', () => {
+    unlock('s-maria');
+    const orphans = orphanIds();
+    expect(orphans.length).toBeGreaterThan(0);
+    ackHandover();
+    expect(app.get().handover).toEqual({ ackBy: 'Maria Santos', ackAt: Date.now() });
+    returnOrphans();
+    for (const id of orphans) expect(itemOf(id).assignee).toBeUndefined();
+    expect(itemOf(orphans[0]).events.at(-1)?.what).toBe('Returned to department queue at shift end');
+  });
+
+  it('server-backed: sends both as commands and a snapshot restores the sign-off', async () => {
+    vi.useRealTimers();
+    unlock('s-maria');
+    const sent: Command[] = [];
+    remote.enable(
+      { run: async (c) => { sent.push(c); return { ok: true, applied: true }; }, load: () => new Promise<Snapshot>(() => {}) },
+      { snapshot: () => {}, error: () => {} },
+      { scope: 'p', outbox: memoryOutbox() },
+    );
+    try {
+      const orphans = orphanIds();
+      ackHandover();
+      expect(app.get().handover).toMatchObject({ ackBy: 'Maria Santos' });
+      returnOrphans();
+      for (const id of orphans) expect(itemOf(id).assignee).toBeUndefined();
+      await vi.waitFor(() => expect(sent).toHaveLength(2));
+      expect(sent[0]).toMatchObject({ type: 'ackHandover', handoverId: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+      expect(sent[1]).toMatchObject({ type: 'returnOrphans', itemIds: orphans });
+
+      const s = app.get();
+      const snap: Snapshot = {
+        property: { id: 'p', name: 'P' }, properties: [], staff: s.staff, requests: s.requests, items: s.items, wos: s.wos,
+        cleaning: s.cleaning, incidents: [], seq: s.seq, at: 0, handover: { ackBy: 'Joel Dizon', ackAt: 1234 },
+      };
+      applySnapshot(snap);
+      expect(app.get().handover).toEqual({ ackBy: 'Joel Dizon', ackAt: 1234 });
+      applySnapshot({ ...snap, handover: {} });
+      expect(app.get().handover).toEqual({});
+    } finally {
+      remote.disable();
+    }
   });
 });
 
