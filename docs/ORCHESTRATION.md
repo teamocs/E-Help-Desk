@@ -79,3 +79,9 @@ Still open: there is no CAPTCHA, and Neon Auth sign-up and email-code sending ar
 - Every push to `main` deploys to production through the Vercel GitHub connection.
 - Database migrations are the exception: apply them to production (`db/apply.mjs` with `.env.neon-main`) before pushing code that needs them. Dev branch first, then production.
 - Still run `tsc`, lint, tests and build before pushing.
+
+## Admin scripts (`db/`, run by the owner with an owner connection)
+
+- `apply.mjs`: apply pending migrations (`ENV_FILE=.env.neon-main node --env-file=.env.neon-main db/apply.mjs`).
+- `issue-code.mjs`: issue a one-time hotel setup code; prints it once.
+- `remove-test-hotel.mjs "<hotel name>" <owner email>`: permanently delete one hotel and everything under it (cascade). Matches by exact name AND owner email, in a transaction; deletes nothing unless exactly one hotel matches. The Neon Auth login is not removed.
