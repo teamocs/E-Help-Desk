@@ -30,6 +30,9 @@ const INTRO: Record<MemberRole, string> = {
   device: "This phone is the hotel’s shared account. Staff pick their name and enter a PIN to work.",
 };
 
+const DEPT_LABELS: Record<string, string> = { it: "IT", frontdesk: "Front desk", housekeeping: "Housekeeping", engineering: "Engineering" };
+const deptLabel = (d: string | null) => (d ? (DEPT_LABELS[d] ?? d.charAt(0).toUpperCase() + d.slice(1)) : "Management");
+
 function RightNow({ summary }: { summary: PropertySummary[] }) {
   if (summary.length === 0) return <div className="group"><div className="pf-empty">No properties yet.</div></div>;
   const many = summary.length > 1;
@@ -126,7 +129,7 @@ export function Account({ data }: { data: AccountData }) {
               {staff.length === 0 && <div className="pf-empty">No staff yet. Open the desk, then add people in Settings.</div>}
               {staff.map((s) => (
                 <div key={s.dept ?? "management"} className="row">
-                  <span className="grow" style={{ textTransform: "capitalize" }}>{s.dept ?? "Management"}</span>
+                  <span className="grow">{deptLabel(s.dept)}</span>
                   <span className="c2">{s.n}</span>
                 </div>
               ))}

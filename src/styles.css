@@ -370,3 +370,5 @@ a.btn, a.btn:hover { text-decoration: none; }
 .pf-brand > span:last-child { white-space: nowrap; }
 .pf-section .group-title, .pf-section > .group-title { padding: 0 4px 0.5rem; }
 @media (max-width: 639px) { .pf-who .t-sub { display: none; } }
+select.field { width: 100%; min-height: var(--hit); padding: 0.6rem 2.25rem 0.6rem 0.9rem; border-radius: var(--r-ctl); border: 0; background-color: var(--fill); color: var(--fg); appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--fg-2) 50%), linear-gradient(135deg, var(--fg-2) 50%, transparent 50%); background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%; background-size: 5px 5px; background-repeat: no-repeat; }
+select.field option { background-color: var(--surface); color: var(--fg); }
