@@ -21,13 +21,22 @@ function failure(e: unknown): ActionResult {
   return { ok: false, error: "Something went wrong. Try again." };
 }
 
-/** First sign-in with no invite: create a hotel and become its owner. */
-export async function createHotel(orgName: string, propertyName: string): Promise<ActionResult> {
+/**
+ * First sign-in with no invite: create a hotel and become its owner. Needs an invite code from OCS.
+ * `code` defaults to "" only until CreateHotel.tsx sends it; an empty code is refused here.
+ */
+export async function createHotel(orgName: string, propertyName: string, code = ""): Promise<ActionResult> {
   const u = await sessionUser();
   if (!u) return NOT_SIGNED_IN;
   if (typeof orgName !== "string" || typeof propertyName !== "string") return { ok: false, error: "Enter a hotel name and a property name." };
+  if (typeof code !== "string" || !code.trim()) return { ok: false, error: "Enter the invite code you got from OCS." };
   try {
-    await tx(null, (q) => q("select * from create_org($1, $2, $3, $4, $5)", [u.id, u.email, u.verified, orgName, propertyName]));
+    // A wrong code comes back as a refusal row, not an error, so the transaction commits and the
+    // failed attempt is counted toward the lockout.
+    const rows = await tx(null, async (q) => (await q("select * from create_org($1, $2, $3, $4, $5, $6)", [u.id, u.email, u.verified, orgName, propertyName, code])).rows);
+    const refusal = rows[0]?.refusal;
+    if (refusal) return { ok: false, error: String(refusal) };
+    if (!rows[0]?.org_id) return failure(new Error("create_org returned no org"));
     return { ok: true };
   } catch (e) {
     return failure(e);

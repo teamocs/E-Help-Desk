@@ -53,3 +53,14 @@ Push to `teamocs/E-Help-Desk`, create the Neon project, create the Vercel projec
 - **Acting-staff cookie is bound to one property.** If an org gets a second property, a command for another property is recorded without a named person until property switching sets the cookie per property.
 - **A PIN reset or removal does not end a staff session already open** (up to 10 hours); removal is enforced on the next command because the person must still be active, a reset is not.
 - **PINs are four digits.** If the database and the auth secret both leak, all 10,000 values can be recovered. Rotating `NEON_AUTH_COOKIE_SECRET` invalidates every PIN and staff session; a manager resets them.
+
+## Invite codes for new hotels (Sprint 8, DRAFT)
+
+Creating a hotel now needs an invite code from OCS (migration 0007). Anyone can still sign up, but they cannot create a hotel without a code.
+
+1. After a hotel signs with OCS, an operator issues a code: `node --env-file=.env.neon-main db/issue-code.mjs --uses 1 --days 14 --note "Rose Hotel, Maria Cruz"`. Use `.env.neon-dev` for testing.
+2. The script stores only a sha256 hash and prints the 160-bit code once. Send it to the owner through a private channel, such as a direct message or a phone call. Do not put it in shared email threads or tickets. If the code is lost, issue a new one.
+3. The owner signs up, verifies their email and enters the hotel name, the property name and the code. A wrong, used or expired code all get the same refusal. Five wrong codes lock that user out of hotel creation for 15 minutes. The cap of 20 new hotels per hour still applies.
+4. To withdraw a code before it is used, run `update signup_codes set uses_left = 0 where note = '...'` as the owner. `used_by_org` and `used_at` show which hotel used each code.
+
+Still open: there is no CAPTCHA, and Neon Auth sign-up and email-code sending are not rate limited by us (Neon manages that). Spam accounts can still be created, but they cannot create hotels. Deploy migration 0007 and the new `createHotel` together, because the old five-argument `create_org` is dropped.
