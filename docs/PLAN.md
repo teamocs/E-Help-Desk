@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-10-29:** the Next.js + Neon + Vercel build is retired. The help desk is now a WordPress plugin on the two Azalea sites. See `docs/WORDPRESS-PLAN.md`. This file is kept as history.
+
 # E-Help Desk: SaaS build plan
 
 **Date:** 2026-10-22. **Supersedes** the stack choices in `azalea-ehelpdesk-stack-matrix.md` and `azalea-ehelpdesk-spike-and-phase1a.md` (Supabase, edge node, Android shell). Those docs stay as background.
