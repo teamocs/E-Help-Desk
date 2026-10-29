@@ -1,0 +1,7 @@
+{
+  "_note": "Shots left out of the video without editing the manifest (same effect as skipInVideo: true).",
+  "skip": [
+    "p17-phone-shared-phone-who",
+    "p18-phone-shared-phone-wrong-pin"
+  ]
+}

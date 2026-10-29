@@ -34,6 +34,11 @@ const db = {
     { id: "r3", ticket: "T-0103", room: "1208", source: "staff", loggedBy: "s-maria", createdAt: now - 40 * min, itemIds: ["i4"] },
     { id: "r4", ticket: "T-0104", room: "220", source: "staff", loggedBy: "s-maria", createdAt: now - 90 * min, itemIds: ["i5"] },
     { id: "r5", ticket: "T-0105", room: "118", source: "staff", loggedBy: "s-maria", createdAt: now - 3 * min, itemIds: [], incomplete: true },
+    { id: "r6", ticket: "T-0106", room: "507", source: "staff", loggedBy: "s-maria", createdAt: now - 6 * min, itemIds: ["i6"] },
+    { id: "r7", ticket: "T-0107", room: "903", source: "staff", loggedBy: "s-maria", createdAt: now - 18 * min, itemIds: ["i7"] },
+    { id: "r8", ticket: "T-0108", room: "614", source: "staff", loggedBy: "s-maria", createdAt: now - 1 * min, itemIds: ["i8"] },
+    { id: "r9", ticket: "T-0109", room: "701", source: "staff", loggedBy: "s-maria", createdAt: now - 130 * min, itemIds: ["i9"] },
+    { id: "r10", ticket: "T-0110", room: "216", source: "staff", loggedBy: "s-maria", createdAt: now - 150 * min, itemIds: ["i10"] },
   ],
   items: Object.fromEntries([
     item("i1", "r1", "Extra towels", "housekeeping", "relayed", 25, { ackAt: now - 24 * min, assignee: "s-joel" }),
@@ -41,12 +46,32 @@ const db = {
     item("i3", "r2", "AC not cold", "engineering", "on_site", 12, { ackAt: now - 11 * min, assignee: "s-ramon", slaMin: 45 }),
     item("i4", "r3", "Wi-Fi issue", "it", "on_hold", 40, { ackAt: now - 38 * min, holdReason: "dnd", holdSince: now - 30 * min, assignee: "s-paolo" }),
     item("i5", "r4", "Bottled water", "fnb", "done", 90, { ackAt: now - 88 * min, doneAt: now - 80 * min }),
+    item("i6", "r6", "Extra pillow", "housekeeping", "relayed", 6, { ackAt: now - 5 * min, assignee: "s-joel", slaMin: 10 }),
+    item("i7", "r7", "No hot water", "engineering", "on_site", 18, { ackAt: now - 16 * min, assignee: "s-ramon", slaMin: 30 }),
+    item("i8", "r8", "Tray pickup", "fnb", "new", 1, { slaMin: 15 }),
+    item("i9", "r9", "TV not working", "it", "done", 130, { ackAt: now - 128 * min, doneAt: now - 115 * min }),
+    item("i10", "r10", "Extra towels", "housekeeping", "done", 150, { ackAt: now - 149 * min, doneAt: now - 142 * min, slaMin: 10 }),
   ].map((i) => [i.id, i])),
-  wos: [{ id: "w1", no: "WO-0007", area: "Guest room", loc: "Room 1208", desc: "Bathroom exhaust fan rattles", priority: "high", dept: "engineering", status: "assessed", reportedBy: "s-ramon", encodedBy: "s-maria", createdAt: now - 3 * 3600_000, assessment: "Worn part, replace", assignType: "inhouse", estCost: 1800, audit: [ev("Reported", now - 3 * 3600_000), ev("Assessed", now - 2 * 3600_000)] }],
-  cleaning: [{ id: "c1", room: "305", type: "Checkout", status: "ready", assignee: "s-joel" }],
+  // Work orders in every stage, so the list looks like a working hotel.
+  wos: [
+    { id: "w1", no: "WO-0007", area: "Guest room", loc: "Room 1208", desc: "Bathroom exhaust fan rattles", priority: "high", dept: "engineering", status: "assessed", reportedBy: "s-ramon", encodedBy: "s-maria", createdAt: now - 3 * 3600_000, assessment: "Worn part, replace", assignType: "inhouse", estCost: 1800, audit: [ev("Reported", now - 3 * 3600_000, "s-ramon"), ev("Assessed", now - 2 * 3600_000, "s-ramon")] },
+    { id: "w2", no: "WO-0006", area: "Public area", loc: "Lobby restroom", desc: "Hand dryer not working", priority: "normal", dept: "engineering", status: "reported", reportedBy: "s-ramon", encodedBy: "s-maria", createdAt: now - 70 * min, audit: [ev("Reported", now - 70 * min, "s-ramon")] },
+    { id: "w3", no: "WO-0005", area: "Outdoor", loc: "Pool deck", desc: "Pool pump is noisy", priority: "normal", dept: "engineering", status: "in_progress", reportedBy: "s-ramon", encodedBy: "s-maria", createdAt: now - 26 * 3600_000, assessment: "Vendor repair needed", assignType: "outsource", contractor: "Benguet Pool Works", estCost: 12500, audit: [ev("Reported", now - 26 * 3600_000, "s-ramon"), ev("Assessed", now - 24 * 3600_000, "s-ramon"), ev("Work started", now - 5 * 3600_000, "s-ramon")] },
+    { id: "w4", no: "WO-0004", area: "Public area", loc: "4th floor corridor", desc: "Replace corridor light fixtures", priority: "normal", dept: "engineering", status: "on_hold", reportedBy: "s-ramon", encodedBy: "s-maria", createdAt: now - 50 * 3600_000, assessment: "Worn part, replace", assignType: "inhouse", estCost: 6400, audit: [ev("Reported", now - 50 * 3600_000, "s-ramon"), ev("Assessed", now - 48 * 3600_000, "s-ramon"), ev("Put on hold", now - 30 * 3600_000, "s-ramon")] },
+    { id: "w5", no: "WO-0003", area: "Public area", loc: "Main stairwell", desc: "Repaint stairwell railing", priority: "normal", dept: "engineering", status: "done", reportedBy: "s-ramon", encodedBy: "s-maria", createdAt: now - 96 * 3600_000, assessment: "Needs repainting", assignType: "inhouse", estCost: 4000, actualCost: 4350, audit: [ev("Reported", now - 96 * 3600_000, "s-ramon"), ev("Assessed", now - 95 * 3600_000, "s-ramon"), ev("Completed", now - 40 * 3600_000, "s-ramon")] },
+  ],
+  // One of every state, so Housekeeping shows its groups.
+  cleaning: [
+    { id: "c1", room: "305", type: "Checkout", status: "ready", assignee: "s-joel" },
+    { id: "c2", room: "507", type: "Checkout", status: "ready" },
+    { id: "c3", room: "218", type: "Stayover", status: "in_progress", assignee: "s-joel" },
+    { id: "c4", room: "611", type: "Checkout", status: "queued", assignee: "s-liza" },
+    { id: "c5", room: "903", type: "Deep clean", status: "scheduled" },
+    { id: "c6", room: "1102", type: "Checkout", status: "done", assignee: "s-joel" },
+  ],
   incidents: [{ id: "x1", no: "INC-001", hazard: "flood", rooms: ["220"], createdAt: now - 50 * min, text: "Water under the door", status: "resolved", log: [ev("Reported", now - 50 * min), ev("Resolved with engineer and manager sign-off", now - 20 * min)] }],
   handover: { ackBy: "Maria Santos", ackAt: now - 9 * 3600_000 },
-  seq: { t: 105, wo: 7, inc: 1, id: 0 },
+  seq: { t: 110, wo: 7, inc: 1, id: 0 },
 };
 const accounts = [{ id: 2, name: "Ana Villanueva", email: "ana@example.test", role: "manager", disabled: false }, { id: 3, name: "Front desk phone", email: "desk-phone@example.test", role: "device", disabled: false }];
 let rev = 1, nextId = 10;
@@ -116,7 +141,7 @@ function apply(c, by) {
     case "resume": mark(it, "on_site", "Resumed", { heldMs: it.heldMs + t - it.holdSince, holdSince: undefined }); break;
     case "finish": mark(it, c.status, "Done", { doneAt: t }); break;
     case "transfer": mark(it, "transferred", `Transferred to ${c.dept}`, { doneAt: t }); db.items[c.newItemId] = { ...item(c.newItemId, it.requestId, it.name, c.dept, "new", 0), xFrom: it.id }; db.requests.find((r) => r.id === it.requestId).itemIds.push(c.newItemId); break;
-    case "escalate": mark(it, "escalated", "Escalated", { woId: c.woId, stBeforeEsc: it.status }); db.wos.unshift({ id: c.woId, no: `WO-000${++db.seq.wo}`, area: "Guest room", loc: "Room", desc: it.name, priority: "normal", dept: it.dept, status: "reported", reportedBy: by, encodedBy: by, createdAt: t, srcItemId: it.id, audit: [ev("Escalated from request", t, by)] }); break;
+    case "escalate": mark(it, "escalated", "Escalated", { woId: c.woId, stBeforeEsc: it.status }); db.wos.unshift({ id: c.woId, no: `WO-000${++db.seq.wo}`, area: "Guest room", loc: `Room ${db.requests.find((r) => r.id === it.requestId)?.room ?? ""}`.trim(), desc: it.name, priority: "normal", dept: it.dept, status: "reported", reportedBy: by, encodedBy: by, createdAt: t, srcItemId: it.id, audit: [ev("Escalated from request", t, by)] }); break;
     case "assessWo": Object.assign(wo, { status: "assessed", assessment: c.assessment, assignType: c.assignType, contractor: c.contractor, estCost: c.estCost }); break;
     case "startWo": case "reopenWo": wo.status = "in_progress"; break;
     case "holdWo": wo.status = "on_hold"; break;
@@ -149,12 +174,14 @@ function page(url, res) {
     Object.assign(db, { requests: [], items: {}, wos: [], cleaning: [], incidents: [], handover: {} });
     rev++;
   }
+  // ?ack=0 puts the handover back to "not yet signed this shift" (the demo capture signs it more than once).
+  if (url.searchParams.get("ack") === "0") db.handover = { ackBy: "Maria Santos", ackAt: now - 9 * 3600_000 };
   const manifest = existsSync(join(root, "desk/manifest.json")) ? JSON.parse(readFileSync(join(root, "desk/manifest.json"), "utf8"))["src/wp/main.tsx"] : null;
   if (!manifest) return send(res, 503, "Run npm run build:wp first.", "text/plain");
   const vars = Object.entries({ ...hotel.vars, ...SHARED }).map(([k, v]) => `${k}:${v}`).join(";");
   const AZL = { restUrl: `http://localhost:${PORT}${NS}/`, nonce: "mock-nonce", loginUrl: "/helpdesk/login/", pollMs: 5000, property: { id: `mock-${key}`, name: hotel.name },
     user: { name: role === "device" ? "Front desk phone" : role === "owner" ? "Mr. Reyes" : "Ana Villanueva", role, canManage: role === "owner" || role === "manager", canManageLists: role === "owner" || role === "manager" },
-    theme: { key, name: hotel.name, logoUrl: url.searchParams.get("logo") === "0" ? "" : "/logo.svg", fonts: {} }, version: "mock" };
+    theme: { key, name: hotel.name, logoUrl: url.searchParams.get("logo") === "0" ? "" : `/logo.svg?h=${key}`, fonts: {} }, version: "mock" };
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Set-Cookie": `azl_role=${role}; Path=/; SameSite=Lax` });
   res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light"><title>E-Help Desk · ${hotel.name}</title>
 <style>@font-face{font-family:"Amaranth";font-weight:400;font-display:swap;src:url(/fonts/amaranth-400-latin.woff2) format("woff2")}@font-face{font-family:"Figtree";font-weight:300 900;font-display:swap;src:url(/fonts/figtree-variable-latin.woff2) format("woff2")}:root{color-scheme:light;${vars}}</style>
@@ -168,7 +195,7 @@ createServer(async (req, res) => {
   if (p === "/" || p === "/helpdesk") return res.writeHead(302, { Location: "/helpdesk/" + url.search }).end();
   if (p === "/helpdesk/") return page(url, res);
   if (p === "/helpdesk/login/") return send(res, 200, `<!doctype html><title>Signed out</title><p style="font:16px system-ui;padding:2rem">Signed out of the mock. <a href="/helpdesk/">Open the desk again</a></p>`, "text/html");
-  if (p === "/logo.svg") return send(res, 200, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="#142d1f"/><path d="M20 7 9 33h5l2.4-6h7.2l2.4 6h5L20 7Zm-2 15 2-6 2 6h-4Z" fill="#c0a14c"/></svg>`, "image/svg+xml");
+  if (p === "/logo.svg") { const b = url.searchParams.get("h") === "boracay"; return send(res, 200, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" fill="${b ? "#0e393f" : "#142d1f"}"/><path d="M20 7 9 33h5l2.4-6h7.2l2.4 6h5L20 7Zm-2 15 2-6 2 6h-4Z" fill="${b ? "#d8d2c4" : "#c0a14c"}"/></svg>`, "image/svg+xml"); }
   if (/^\/(desk|fonts)\//.test(p)) {
     const f = normalize(join(root, p));
     if (!f.startsWith(root) || !existsSync(f)) return send(res, 404, "Not found", "text/plain");
@@ -182,7 +209,7 @@ createServer(async (req, res) => {
   const b = m === "GET" ? {} : await body(req);
   if (r === "/command") {
     if (role === "device" && !actor) return send(res, 403, { ok: false, code: "azl_needs_pin", error: "Sign in with your PIN first." });
-    return send(res, 200, apply(b, actor ?? "member"));
+    return send(res, 200, apply(b, actor ?? "s-maria")); // an owner or manager's own account acts as the head desk officer in this mock
   }
   if (r === "/pin/sign-in") return /^\d{4}$/.test(b.pin) && b.pin !== "0000" ? send(res, 200, { ok: true, token: `tok-${b.staffId}`, expiresAt: Date.now() + 12 * 3600_000, staff: { id: b.staffId } }) : send(res, 200, { ok: false, error: "That name and PIN do not match." });
   if (r === "/pin/sign-out" || r === "/auth/logout") return send(res, 200, { ok: true, redirect: "/helpdesk/login/" });

@@ -1,0 +1,25 @@
+{
+  "name": "azalea-helpdesk-demo-video",
+  "private": true,
+  "description": "Remotion demo video of the Azalea e-Helpdesk, built from demo/shots/manifest.json",
+  "scripts": {
+    "sync": "node scripts/sync.mjs",
+    "preview": "npm run sync && remotion studio src/index.ts",
+    "render": "npm run sync && remotion render src/index.ts AzaleaDemo ../out/azalea-helpdesk-demo.mp4 --codec h264 --crf 20",
+    "still": "npm run sync && node scripts/stills.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.539",
+    "@remotion/cli": "4.0.539",
+    "@remotion/renderer": "4.0.539",
+    "@remotion/transitions": "4.0.539",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "typescript": "5.9.3"
+  }
+}

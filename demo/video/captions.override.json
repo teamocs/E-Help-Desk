@@ -1,0 +1,20 @@
+{
+  "_note": "Caption rewrites for the video, keyed by manifest shot id. Real button label first, plain meaning after. The manifest is not edited.",
+  "d025-safety-warning": "A red warning appears before anything is sent. Call for help first, then tap Raise safety alert to warn everyone.",
+  "d029-safety-resolve": "When the danger is over, a manager or the owner taps Resolve with sign-off. A false alarm gets Downgrade to false alarm instead.",
+  "d030-safety-second-alert": "A gas smell turns out to be a false alarm. Downgrade to false alarm closes it, and the note stays in the log.",
+  "d032-detail-new": "The details show what was asked, which team has it and a timer. Tap Relay to pass the request to that team.",
+  "d033-detail-sent": "The team has it now. Tap On site when someone reaches the room.",
+  "d034-detail-on-site": "Done closes the request. If the guest cannot be served yet, tap Hold… so it waits without counting as late.",
+  "d040-detail-tray-pickup": "If the wrong team has the request, tap Transfer… and pick the department that should do it.",
+  "d043-detail-escalate": "For a bigger repair, like an air conditioner that stays warm, tap Escalate to work order. It becomes a repair job.",
+  "d050-work-order-in-progress": "While the work goes on, tap Put on hold if it has to wait, for example for a part.",
+  "d059-handover-return": "Requests left by someone who went off shift go back to their team when you tap Return.",
+  "p10-phone-ticket-detail": "Tap a request to see its steps. The big button does the next step, here Done.",
+  "d018-detail-finish-logging": "Open the saved room, tap what the guest needs, then tap Add to ticket.",
+  "d069-sidebar-owner": "The hotel owner sees all six tabs, including Insights and Settings.",
+  "d070-sidebar-manager": "A manager also sees six tabs, and can change staff and lists, but not logins.",
+  "d071-settings-manager": "In Settings, a manager finds Staff and Lists, but no Logins.",
+  "d072-sidebar-supervisor": "A supervisor sees six tabs too, but in Settings only the display options.",
+  "d073-settings-supervisor": "A supervisor has no Staff, Lists or Logins in Settings, only the display options."
+}

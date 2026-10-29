@@ -9,3 +9,10 @@ dist/
 docs/azalea-ehelpdesk-build-brief.md
 
 *.tsbuildinfo
+
+# demo: regenerable output
+demo/node_modules/
+demo/video/node_modules/
+demo/out/
+demo/shots/
+demo/video/public/
