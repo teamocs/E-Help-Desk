@@ -51,7 +51,8 @@ const openRequests = (s: State) => s.requests.filter((r) => r.itemIds.some((id) 
 
 /** Server-backed mode hides the demo-only Network simulator. */
 const visibleNav = (isRemote: boolean) => (isRemote ? NAV.filter((n) => n.tab !== 'network') : NAV);
-const leave = () => window.location.assign('/dashboard');
+/** Back to the hotel account. On WordPress the plugin injects window.AZL.accountUrl; the Next.js build falls back to /dashboard. */
+const leave = () => window.location.assign((window as unknown as { AZL?: { accountUrl?: string } }).AZL?.accountUrl ?? '/dashboard');
 /** Back to the PIN screen. On a shared phone the previous person is signed out first, so nobody inherits their name. */
 async function switchPerson(deviceOnly: boolean) {
   if (deviceOnly) {

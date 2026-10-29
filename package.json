@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint src",
-    "test": "vitest run --dir src"
+    "test": "vitest run --dir src",
+    "build:wp": "vite build --config vite.wp.config.ts",
+    "lint:php": "node scripts/lint-php.mjs",
+    "zip:wp": "node scripts/zip-wp.mjs"
   },
   "dependencies": {
     "@neondatabase/auth": "^0.6.0-beta",
@@ -24,10 +27,12 @@
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "fake-indexeddb": "^6.2.6",
     "typescript": "^5",
+    "vite": "^8.3.5",
     "vitest": "^5.0.5"
   }
 }

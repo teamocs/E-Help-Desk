@@ -199,3 +199,28 @@ docs/WORDPRESS-PLAN.md        this file
 5. A replayed command does not duplicate anything. A wrong role is refused. Five wrong PINs lock a person.
 6. Nothing from one site appears on the other.
 7. Deactivating the plugin leaves the sites working as before.
+
+
+## 11. Prototype status (2026-10-30)
+
+**Installed and running on both staging sites** (plugin 0.1.1, PHP 8.3.36 after the owner's cPanel switch): `https://azaleabaguio.com/staging2-baguio/helpdesk/` and `https://azaleaboracay.com/staging2/helpdesk/`. Live sites are untouched.
+
+Verified on the real staging MySQL: tables and roles created; staff and PIN sign-in, wrong-PIN answers identical, lockout after five tries; request logging with gap-free ticket numbers; the same command sent twice changes nothing; relay and finish; smoke reports from two rooms merge into one incident; the 911 call records once; handover sign-off; poll counter; a browser session (cookie + nonce) logs a request that is routed to the right department; the two sites show no data from each other.
+
+**Findings that changed the plan**
+- Staging is a folder inside each live domain (own database, search indexing off). cPanel sets PHP per domain, so the PHP move applied to live and staging together. All four sites were checked after the switch: home pages load, no fatal errors, plugin counts unchanged.
+- The live sites are not copies of staging: live uses `GeneratePress Child 0.1` and has Wordfence active; staging uses the newer child theme (2.0.0) and has Fluent Forms. Before going live, test the plugin with Wordfence on.
+- The host's ModSecurity blocked file uploads and page requests from command-line tools (HTTP 406) until the owner turned it off. **Turn it back on** and confirm the plugin still works: browser sessions are not affected, but uploads of new versions will need it off again or a manual wp-admin upload.
+- The host caches PHP files for 90 seconds, so a freshly uploaded version takes up to 90 seconds to take effect.
+- The install zips remain in `wp-content/uploads/azl-ehd-upload/` on both staging sites and are publicly downloadable. Delete them (cPanel File Manager) or block that folder; the connector cannot write an `.htaccess`.
+- Test data on staging: Baguio has 3 test staff ("Test HDO", "Test Housekeeper", "Test Locked"), 2 requests, 1 safety incident and 1 handover; Boracay has 1 test staff and 1 request. The plugin has no delete route for the audit log by design.
+
+**Known limitations and next steps**
+1. A command queued while offline is credited to whoever is signed in with a PIN when it finally sends.
+2. The desk drops a command that arrives without a valid PIN and shows the server's message (the backend note says keep it queued: decide).
+3. No device-wide PIN limit: someone can try one PIN against every person (per-person lockout only).
+4. All writes lock one counter row, so heavy simultaneous use queues; a deadlock returns an error and resending is safe. Measure on real use.
+5. WordPress sessions last 24 hours, then the desk shows a sign-in prompt.
+6. The bundle is 198 KB compressed; most of it is the icon set.
+7. Run the SQL checks listed in the backend report on the real database under concurrent load (two phones on one op id, two 911 taps at once).
+8. P1: choose the pilot property, seed real staff and rooms, add `/helpdesk/` to the staff phones' home screens, shadow mode beside the radio.

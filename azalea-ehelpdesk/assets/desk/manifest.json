@@ -1,0 +1,11 @@
+{
+  "src/wp/main.tsx": {
+    "file": "desk-tasJLNQL.js",
+    "name": "main",
+    "src": "src/wp/main.tsx",
+    "isEntry": true,
+    "css": [
+      "desk-57C59MKG.css"
+    ]
+  }
+}
