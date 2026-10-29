@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Azalea e-Helpdesk
  * Description:       Live service-request, maintenance and safety desk for one hotel property, served at /helpdesk/.
- * Version:           0.1.1
+ * Version:           0.2.3
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Online Creative Solutions
@@ -10,7 +10,7 @@
  * License:           Proprietary
  *
  * One install is one property. The REST API lives in includes/ (namespace azl-ehd/v1); this file only loads it,
- * handles activation, and serves the desk shell at /helpdesk/.
+ * handles activation, and serves the desk shell at /helpdesk/ and the sign-in pages under it.
  *
  * @package AzaleaEHelpdesk
  */
@@ -19,11 +19,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AZL_EHD_VERSION', '0.1.1' );
+define( 'AZL_EHD_VERSION', '0.2.3' );
 define( 'AZL_EHD_FILE', __FILE__ );
 define( 'AZL_EHD_DIR', plugin_dir_path( __FILE__ ) );
-/** Bump when the rewrite rule changes, so it is flushed once after an update (never on every request). */
-define( 'AZL_EHD_REWRITE_VERSION', '1' );
+/** Bump when the rewrite rules change, so they are flushed once after an update (never on every request). */
+define( 'AZL_EHD_REWRITE_VERSION', '2' );
 
 /**
  * Load every includes/*.php. A missing or broken file is reported in wp-admin instead of taking the site down.
@@ -52,6 +52,14 @@ function azl_ehd_load_includes() {
 }
 azl_ehd_load_includes();
 
+// Roles upgrade, wp-admin lockdown, session lengths and the disabled-account check.
+if ( class_exists( 'Azl_Caps' ) ) {
+	Azl_Caps::hooks();
+}
+if ( class_exists( 'Azl_Auth' ) ) {
+	Azl_Auth::hooks();
+}
+
 add_action(
 	'admin_notices',
 	static function () {
@@ -69,7 +77,7 @@ add_action(
 /* ---------- activation ---------- */
 
 /**
- * Create or upgrade tables and capabilities, register the /helpdesk/ rule and flush rewrite rules once.
+ * Create or upgrade tables and roles, register the /helpdesk/ rules and flush rewrite rules once.
  */
 function azl_ehd_activate() {
 	azl_ehd_load_includes();
@@ -86,12 +94,14 @@ function azl_ehd_activate() {
 register_activation_hook( __FILE__, 'azl_ehd_activate' );
 
 /**
- * Remove the /helpdesk/ rule. Data, options and capabilities stay (see uninstall.php).
+ * Remove the /helpdesk/ rules. Data, options and roles stay (see uninstall.php).
  */
 function azl_ehd_deactivate() {
 	global $wp_rewrite;
 	if ( isset( $wp_rewrite->extra_rules_top ) && is_array( $wp_rewrite->extra_rules_top ) ) {
-		unset( $wp_rewrite->extra_rules_top[ azl_ehd_rewrite_regex() ] );
+		foreach ( array_keys( azl_ehd_rewrite_rules() ) as $regex ) {
+			unset( $wp_rewrite->extra_rules_top[ $regex ] );
+		}
 	}
 	flush_rewrite_rules( false );
 	delete_option( 'azl_ehd_rewrite_version' );
@@ -106,32 +116,45 @@ add_action(
 		if ( class_exists( 'Azl_Rest' ) && method_exists( 'Azl_Rest', 'register_routes' ) ) {
 			Azl_Rest::register_routes();
 		}
+		if ( class_exists( 'Azl_Auth' ) ) {
+			Azl_Auth::register_routes();
+		}
+		if ( class_exists( 'Azl_Accounts' ) ) {
+			Azl_Accounts::register_routes();
+		}
 	}
 );
 
-/* ---------- the /helpdesk/ route ---------- */
+/* ---------- the /helpdesk/ routes ---------- */
 
 /**
- * The rewrite pattern for /helpdesk/.
+ * The rewrite rules, in match order: the sign-in pages, the desk, then anything else under /helpdesk/
+ * (azl_helpdesk=2: the sign-in page when signed out, the desk when signed in).
  *
- * @return string
+ * @return array<string, string>
  */
-function azl_ehd_rewrite_regex() {
-	return '^helpdesk/?$';
+function azl_ehd_rewrite_rules() {
+	return array(
+		'^helpdesk/(login|forgot|reset)/?$' => 'index.php?azl_auth=$matches[1]',
+		'^helpdesk/?$'                      => 'index.php?azl_helpdesk=1',
+		'^helpdesk/.+$'                     => 'index.php?azl_helpdesk=2',
+	);
 }
 
 /**
- * Register the rule and its query var. Runs on every init (cheap); flushing does not.
+ * Register the rules. Runs on every init (cheap); flushing does not.
  */
 function azl_ehd_add_rewrite() {
-	add_rewrite_rule( azl_ehd_rewrite_regex(), 'index.php?azl_helpdesk=1', 'top' );
+	foreach ( azl_ehd_rewrite_rules() as $regex => $query ) {
+		add_rewrite_rule( $regex, $query, 'top' );
+	}
 }
 add_action( 'init', 'azl_ehd_add_rewrite' );
 
 add_action(
 	'admin_init',
 	static function () {
-		// After a plugin update that changed the rule: flush once, then never again until the next change.
+		// After a plugin update that changed the rules: flush once, then never again until the next change.
 		if ( get_option( 'azl_ehd_rewrite_version' ) !== AZL_EHD_REWRITE_VERSION && current_user_can( 'activate_plugins' ) ) {
 			flush_rewrite_rules( false );
 			update_option( 'azl_ehd_rewrite_version', AZL_EHD_REWRITE_VERSION, false );
@@ -143,6 +166,7 @@ add_filter(
 	'query_vars',
 	static function ( $vars ) {
 		$vars[] = 'azl_helpdesk';
+		$vars[] = 'azl_auth';
 		return $vars;
 	}
 );
@@ -210,83 +234,93 @@ function azl_ehd_desk_role( $user ) {
 	if ( ! user_can( $user, 'azl_act_directly' ) ) {
 		return 'device';
 	}
-	if ( in_array( 'administrator', (array) $user->roles, true ) ) {
+	// Hotel owners (azl_owner) and administrators, who hold every azl_* capability.
+	if ( user_can( $user, 'azl_manage_accounts' ) || in_array( 'administrator', (array) $user->roles, true ) ) {
 		return 'owner';
 	}
 	return user_can( $user, 'azl_manage_staff' ) ? 'manager' : 'supervisor';
 }
 
 /**
- * Send the no-cache headers every desk response needs, and tell page-cache plugins to skip it.
+ * Headers for every /helpdesk/ page (desk and sign-in pages): no caching anywhere, and the security
+ * headers with a fresh CSP nonce, which the page puts on its inline config script and token style.
+ *
+ * @return string The CSP nonce.
  */
-function azl_ehd_no_cache() {
-	if ( ! defined( 'DONOTCACHEPAGE' ) ) {
-		define( 'DONOTCACHEPAGE', true );
-	}
-	if ( ! defined( 'DONOTCACHEOBJECT' ) ) {
-		define( 'DONOTCACHEOBJECT', true );
-	}
-	if ( ! defined( 'DONOTCACHEDB' ) ) {
-		define( 'DONOTCACHEDB', true );
+function azl_ehd_page_headers() {
+	foreach ( array( 'DONOTCACHEPAGE', 'DONOTCACHEOBJECT', 'DONOTCACHEDB' ) as $flag ) {
+		if ( ! defined( $flag ) ) {
+			define( $flag, true );
+		}
 	}
 	nocache_headers();
-	header( 'Cache-Control: no-store, no-cache, must-revalidate, max-age=0, private' );
-	header( 'X-Robots-Tag: noindex, nofollow' );
-	header( 'Referrer-Policy: same-origin' );
-	header( 'X-Content-Type-Options: nosniff' );
+	$nonce = Azl_Auth::nonce();
+	foreach ( Azl_Auth::security_headers( $nonce ) as $name => $value ) {
+		header( $name . ': ' . $value );
+	}
 	header( 'Content-Type: text/html; charset=utf-8' );
+	return $nonce;
 }
 
 /**
- * A small page with no theme, for the 403 and "not built" cases.
+ * A small branded page with no theme, for the 403 and "not built" cases.
  *
  * @param int    $status HTTP status.
  * @param string $title  Heading.
  * @param string $body   Plain text message.
  */
 function azl_ehd_plain_page( $status, $title, $body ) {
+	$nonce = azl_ehd_page_headers();
 	status_header( $status );
-	azl_ehd_no_cache();
-	?>
-<!doctype html>
-<html <?php language_attributes(); ?>>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
-<title><?php echo esc_html( $title ); ?></title>
-<style>body{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;background:#f2f2f7;color:#1c1c1e;margin:0;display:grid;place-items:center;min-height:100vh;padding:16px;box-sizing:border-box}main{max-width:440px;background:#fff;border-radius:16px;padding:24px}a{color:#0a63c9}</style>
-</head>
-<body>
-<main>
-<h1><?php echo esc_html( $title ); ?></h1>
-<p><?php echo esc_html( $body ); ?></p>
-<p><a href="<?php echo esc_url( home_url( '/' ) ); ?>"><?php esc_html_e( 'Back to the website', 'azl-ehd' ); ?></a> &middot; <a href="<?php echo esc_url( wp_logout_url( azl_ehd_desk_url() ) ); ?>"><?php esc_html_e( 'Sign in as someone else', 'azl-ehd' ); ?></a></p>
-</main>
-</body>
-</html>
-	<?php
+	Azl_Auth::render(
+		'message',
+		array(
+			'nonce' => $nonce,
+			'title' => $title,
+			'text'  => $body,
+		)
+	);
 	exit;
 }
 
 /**
- * Serve /helpdesk/: only the app shell, never the theme header or footer.
+ * The current request as an absolute URL on this site, for redirect_to (Azl_Auth::safe_redirect checks it).
+ *
+ * @return string
+ */
+function azl_ehd_current_url() {
+	$home = wp_parse_url( home_url( '/' ) );
+	$uri  = isset( $_SERVER['REQUEST_URI'] ) ? (string) wp_unslash( $_SERVER['REQUEST_URI'] ) : '/'; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput
+	return ( $home['scheme'] ?? 'https' ) . '://' . ( $home['host'] ?? '' ) . ( isset( $home['port'] ) ? ':' . (int) $home['port'] : '' ) . $uri;
+}
+
+/**
+ * Serve /helpdesk/ and everything under it: the sign-in pages, or the app shell. Never the theme header or footer.
  */
 function azl_ehd_render_desk() {
-	if ( ! get_query_var( 'azl_helpdesk' ) ) {
+	$auth = (string) get_query_var( 'azl_auth' );
+	if ( in_array( $auth, Azl_Auth::PAGES, true ) ) {
+		Azl_Auth::serve( $auth );
+	}
+	$desk = (string) get_query_var( 'azl_helpdesk' );
+	if ( '' === $desk ) {
 		return;
 	}
-	azl_ehd_no_cache();
-
 	if ( ! is_user_logged_in() ) {
-		wp_safe_redirect( wp_login_url( azl_ehd_desk_url() ) );
+		azl_ehd_page_headers();
+		wp_safe_redirect( Azl_Auth::url( 'login', array( 'redirect_to' => Azl_Auth::safe_redirect( azl_ehd_current_url() ) ) ) );
 		exit;
 	}
-	if ( ! current_user_can( 'azl_use_desk' ) ) {
+	if ( '1' !== $desk ) {
+		azl_ehd_page_headers();
+		wp_safe_redirect( azl_ehd_desk_url() );
+		exit;
+	}
+	if ( ! current_user_can( 'azl_use_desk' ) || Azl_Auth::is_disabled( get_current_user_id() ) ) {
 		azl_ehd_plain_page(
 			403,
 			__( 'No access to the help desk', 'azl-ehd' ),
-			__( 'You are signed in, but this account is not allowed to open the help desk. Ask a manager to give your account a help desk role.', 'azl-ehd' )
+			__( 'You are signed in, but this account is not allowed to open the help desk. Ask your hotel owner or manager to give your account a help desk role.', 'azl-ehd' )
 		);
 	}
 	$assets = azl_ehd_assets();
@@ -294,24 +328,29 @@ function azl_ehd_render_desk() {
 		azl_ehd_plain_page( 503, __( 'Help desk not built', 'azl-ehd' ), __( 'The desk files are missing from this plugin. Reinstall the plugin zip.', 'azl-ehd' ) );
 	}
 
+	$nonce    = azl_ehd_page_headers();
 	$user     = wp_get_current_user();
 	$settings = class_exists( 'Azl_Admin' ) ? Azl_Admin::settings() : array();
+	$theme    = Azl_Theme::tokens();
 	$config   = array(
-		'restUrl'  => esc_url_raw( rest_url( 'azl-ehd/v1/' ) ),
-		'nonce'    => wp_create_nonce( 'wp_rest' ),
-		'loginUrl' => esc_url_raw( wp_login_url( azl_ehd_desk_url() ) ),
-		'accountUrl' => esc_url_raw( admin_url( 'profile.php' ) ),
-		'pollMs'   => 1000 * (int) ( $settings['poll_seconds'] ?? 5 ),
-		'property' => array(
+		'restUrl'    => esc_url_raw( rest_url( 'azl-ehd/v1/' ) ),
+		'nonce'      => wp_create_nonce( 'wp_rest' ),
+		'loginUrl'   => esc_url_raw( Azl_Auth::url( 'login' ) ),
+		// No wp-admin links for desk accounts: the account page is the desk itself.
+		'accountUrl' => esc_url_raw( azl_ehd_desk_url() ),
+		'pollMs'     => 1000 * (int) ( $settings['poll_seconds'] ?? 5 ),
+		'property'   => array(
 			'id'   => (string) get_current_blog_id(),
-			'name' => (string) ( $settings['property_name'] ?? get_bloginfo( 'name' ) ),
+			'name' => wp_specialchars_decode( (string) ( $settings['property_name'] ?? get_bloginfo( 'name' ) ), ENT_QUOTES ),
 		),
-		'user'     => array(
-			'name'      => (string) $user->display_name,
-			'role'      => azl_ehd_desk_role( $user ),
-			'canManage' => current_user_can( 'azl_manage_staff' ),
+		'user'       => array(
+			'name'              => (string) $user->display_name,
+			'role'              => azl_ehd_desk_role( $user ),
+			'canManage'         => current_user_can( 'azl_manage_staff' ),
+			'canManageAccounts' => current_user_can( 'azl_manage_accounts' ),
 		),
-		'version'  => AZL_EHD_VERSION,
+		'theme'      => Azl_Theme::public_tokens( $theme ),
+		'version'    => AZL_EHD_VERSION,
 	);
 	$json = wp_json_encode( $config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT );
 
@@ -322,11 +361,11 @@ function azl_ehd_render_desk() {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
-<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="<?php echo esc_attr( $theme['vars']['--azl-bg'] ); ?>">
+<meta name="color-scheme" content="light">
 <meta name="robots" content="noindex, nofollow">
 <title><?php echo esc_html( sprintf( /* translators: %s: property name */ __( 'E-Help Desk · %s', 'azl-ehd' ), $config['property']['name'] ) ); ?></title>
+<style nonce="<?php echo esc_attr( $nonce ); ?>"><?php echo Azl_Theme::css( $theme ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- constants and esc_url_raw URLs ?></style>
 	<?php foreach ( $assets['css'] as $href ) : ?>
 <link rel="stylesheet" href="<?php echo esc_url( $href ); ?>">
 	<?php endforeach; ?>
@@ -335,7 +374,7 @@ function azl_ehd_render_desk() {
 <div id="azl-root"></div>
 	<?php
 	// phpcs:disable WordPress.Security.EscapeOutput.OutputNotEscaped -- wp_get_*_tag escape their attributes; $json is wp_json_encode with JSON_HEX_* flags.
-	echo wp_get_inline_script_tag( 'window.AZL = ' . $json . ';' );
+	echo wp_get_inline_script_tag( 'window.AZL = ' . $json . ';', array( 'nonce' => $nonce ) );
 	echo wp_get_script_tag(
 		array(
 			'type' => 'module',

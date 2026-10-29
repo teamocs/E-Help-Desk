@@ -1,8 +1,8 @@
 import { motion } from 'motion/react';
-import { cleanSet, useApp } from '../domain/store';
+import { cleanSet, openComposer, useApp } from '../domain/store';
 import type { CleanStatus } from '../domain/types';
 import { springs } from '../lib/motion';
-import { Button, Group, Icon, NetPill, Pill, Screen } from '../ui/kit';
+import { Button, Empty, Group, Icon, Pill, Screen } from '../ui/kit';
 
 const ORDER: { st: CleanStatus; title: string }[] = [
   { st: 'ready', title: 'Ready to clean' },
@@ -17,11 +17,15 @@ export function Housekeeping() {
   const staff = useApp((s) => s.staff);
   const ready = tasks.filter((t) => t.status === 'ready').length;
   return (
-    <Screen title="Housekeeping" subtitle={`${ready} room${ready === 1 ? '' : 's'} ready now`} trailing={<NetPill />}>
-      <div className="banner ok" style={{ marginBottom: 6 }}>
-        <Icon name="bolt" weight="fill" />
-        <span className="t-sub">Finish a <b>checkout</b> or <b>inspection</b> item on a ticket and that room turns Ready here automatically.</span>
-      </div>
+    <Screen title="Housekeeping" subtitle={tasks.length ? `${ready} room${ready === 1 ? '' : 's'} ready now` : 'Rooms to clean, in the order they can be done'}>
+      {tasks.length === 0 ? (
+        <Empty icon="broom" text="No cleaning tasks right now. A room that needs cleaning can still be logged as a housekeeping request." action="Log a cleaning request" onAction={() => openComposer({ preset: 'clean' })} />
+      ) : (
+        <div className="banner quiet">
+          <Icon name="bolt" weight="fill" />
+          <span className="t-sub">Finish a <b>checkout</b> or <b>inspection</b> item on a ticket and that room turns Ready here automatically.</span>
+        </div>
+      )}
       {ORDER.map(({ st, title }) => {
         const ts = tasks.filter((t) => t.status === st);
         if (!ts.length) return null;

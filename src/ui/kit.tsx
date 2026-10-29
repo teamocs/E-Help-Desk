@@ -1,31 +1,20 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
+import { createElement, useEffect, useState, useSyncExternalStore, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import {
-  ArrowClockwise, ArrowsLeftRight, Bed, BeerBottle, Bell, Broadcast, Broom, ChartBar, Check, CheckCircle, ClipboardText, Clock, CloudCheck, CloudSlash,
-  CaretRight, Drop, Ear, Flame, Gear, Hourglass, Info, Lightbulb, Lock, Plus, Printer, ShieldWarning, Shower, Snowflake, Tray, Television, Warning,
-  WifiHigh, WifiSlash, Wrench, X, Pause, Play, Prohibit, Sparkle, HouseLine, Copy, Lightning, BatteryWarning, BatteryFull, Moon, Sun, TextAa, Siren,
-  UserSwitch, Phone, List, ArrowUUpLeft, ArrowRight, Cpu, Handshake, Receipt, DeviceMobile, Waves, Thermometer,
-} from '@phosphor-icons/react';
-import { haptic, hapticBus, type Haptic } from '../lib/haptics';
+import { haptic, type Haptic } from '../lib/haptics';
 import { springs, motionTokens } from '../lib/motion';
-import { app, useApp, paperMode } from '../domain/store';
+import { useApp, useUI } from '../domain/store';
 import { DEPTS } from '../domain/rules';
 import type { Dept, Staff } from '../domain/types';
-
-const ICONS = {
-  towel: Shower, bed: Bed, drop: Drop, broom: Broom, check: CheckCircle, snow: Snowflake, bulb: Lightbulb, flame: Flame, wifi: WifiHigh, tv: Television,
-  bottle: BeerBottle, tray: Tray, clock: Clock, ear: Ear, plus: Plus, wrench: Wrench, clip: ClipboardText, chart: ChartBar, gear: Gear, lock: Lock,
-  shield: ShieldWarning, wifioff: WifiSlash, cloudoff: CloudSlash, cloud: CloudCheck, battery: BatteryFull, batterylow: BatteryWarning, warn: Warning,
-  chev: CaretRight, x: X, tick: Check, hourglass: Hourglass, swap: ArrowsLeftRight, undo: ArrowUUpLeft, play: Play, pause: Pause, sparkle: Sparkle,
-  broadcast: Broadcast, siren: Siren, user: UserSwitch, phone: Phone, list: List, arrow: ArrowRight, cpu: Cpu, hand: Handshake, receipt: Receipt,
-  bell: Bell, printer: Printer, info: Info, home: HouseLine, copy: Copy, bolt: Lightning, moon: Moon, sun: Sun, text: TextAa, refresh: ArrowClockwise,
-  prohibit: Prohibit, device: DeviceMobile, waves: Waves, temp: Thermometer,
-} as const;
-export type IconName = keyof typeof ICONS;
+import { ICONS } from './icons';
 
 export function Icon({ name, size = 22, weight = 'regular' }: { name: string; size?: number; weight?: 'regular' | 'bold' | 'fill' }) {
-  const C = ICONS[name as IconName] ?? Info;
-  return <C size={size} weight={weight} aria-hidden="true" />;
+  const set = ICONS[name] ?? ICONS.info;
+  const els = set[weight === 'fill' ? 1 : 0];
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" focusable="false" style={{ flex: 'none' }}>
+      {els.map(([tag, attrs], i) => createElement(tag, { key: i, ...attrs }))}
+    </svg>
+  );
 }
 
 /* ---------- responsive tier ---------- */
@@ -69,14 +58,6 @@ export function Button({ variant = 'fill', size = 'md', block, feel = 'light', o
   );
 }
 
-export function IconButton({ name, label, onClick }: { name: string; label: string; onClick: () => void }) {
-  return (
-    <motion.button type="button" className="iconbtn" aria-label={label} whileTap={{ scale: 0.9 }} onClick={() => { haptic('select'); onClick(); }}>
-      <Icon name={name} />
-    </motion.button>
-  );
-}
-
 export function Segmented<T extends string>({ value, onChange, options, label }: { value: T; onChange: (v: T) => void; options: { value: T; label: string }[]; label: string }) {
   const i = Math.max(0, options.findIndex((o) => o.value === value));
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -91,7 +72,7 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
   };
   return (
     <div className="seg" role="radiogroup" aria-label={label} onKeyDown={onKey}>
-      <motion.span className="thumb" aria-hidden="true" style={{ width: `calc((100% - 4px) / ${options.length})` }} animate={{ x: `${i * 100}%` }} transition={springs.snappy} />
+      <motion.span className="thumb" aria-hidden="true" style={{ width: `calc((100% - 6px) / ${options.length})` }} animate={{ x: `${i * 100}%` }} transition={springs.snappy} />
       {options.map((o) => (
         <button key={o.value} type="button" role="radio" aria-checked={o.value === value} tabIndex={o.value === value ? 0 : -1} onClick={() => { haptic('select'); onChange(o.value); }}>
           {o.label}
@@ -115,7 +96,7 @@ export function Group({ title, children, note }: { title?: string; children: Rea
     <section>
       {title && <h2 className="group-title">{title}</h2>}
       <div className="group">{children}</div>
-      {note && <p className="t-foot c2" style={{ padding: '8px 16px 0', margin: 0 }}>{note}</p>}
+      {note && <p className="t-foot c2" style={{ padding: '8px 4px 0', margin: 0 }}>{note}</p>}
     </section>
   );
 }
@@ -143,9 +124,20 @@ export function Row({ icon, tint, title, sub, trailing, onClick, chevron }: { ic
   );
 }
 
-export const Pill = ({ tone = '', children }: { tone?: '' | 'ok' | 'warn' | 'bad' | 'accent'; children: ReactNode }) => <span className={`pill ${tone}`}>{children}</span>;
-export const DeptChip = ({ dept }: { dept: Dept }) => <span className={`dept dept-${dept}`}>{DEPTS[dept].short}</span>;
-export const Avatar = ({ staff, large }: { staff?: Staff; large?: boolean }) => (
+/** A real empty state: what this place is for, and the one thing to do next. */
+export function Empty({ icon, text, action, onAction }: { icon: string; text: ReactNode; action?: string; onAction?: () => void }) {
+  return (
+    <div className="empty">
+      <span className="empty-ico" aria-hidden="true"><Icon name={icon} size={26} /></span>
+      <p>{text}</p>
+      {action && onAction && <Button size="sm" onClick={onAction}>{action}</Button>}
+    </div>
+  );
+}
+
+export const Pill = ({ tone = '', children }: { tone?: '' | 'ok' | 'warn' | 'bad' | 'accent' | 'gold'; children: ReactNode }) => <span className={`pill ${tone}`}>{children}</span>;
+export const DeptChip = ({ dept }: { dept: Dept }) => <span className={`dept dept-${dept}`} title={DEPTS[dept].label}>{DEPTS[dept].short}</span>;
+export const Avatar = ({ staff, large }: { staff?: Pick<Staff, 'initials'>; large?: boolean }) => (
   <span className={`avatar ${large ? 'lg' : ''}`} aria-hidden="true">{staff?.initials ?? '?'}</span>
 );
 
@@ -187,84 +179,59 @@ export function Announcer() {
   return <div className="sr" role="status" aria-live="polite">{msg}</div>;
 }
 
-/** Shows what a phone would feel. Real vibration still fires where the platform allows it. */
-export function HapticHud() {
-  const show = useApp((s) => s.prefs.showHaptics && s.prefs.haptics);
-  const [k, setK] = useState<{ kind: Haptic; n: number } | null>(null);
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  useEffect(() => {
-    const on = (e: Event) => {
-      setK((p) => ({ kind: (e as CustomEvent<Haptic>).detail, n: (p?.n ?? 0) + 1 }));
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setK(null), 900);
-    };
-    hapticBus.addEventListener('haptic', on);
-    return () => hapticBus.removeEventListener('haptic', on);
-  }, []);
-  return (
-    <AnimatePresence>
-      {show && k && (
-        <motion.div key={k.n} className="hud" aria-hidden="true" initial={{ opacity: 0, y: 8, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0 }} transition={springs.instant}>
-          <motion.i animate={{ scale: [1, 1.7, 1] }} transition={{ duration: 0.3 }} />
-          haptic: {k.kind}
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+/* ---------- connection ---------- */
+const subOnline = (f: () => void) => {
+  window.addEventListener('online', f);
+  window.addEventListener('offline', f);
+  return () => {
+    window.removeEventListener('online', f);
+    window.removeEventListener('offline', f);
+  };
+};
+const useBrowserOnline = () => useSyncExternalStore(subOnline, () => navigator.onLine, () => true);
+
+/** Online, Syncing or Offline, from the browser, the poller and the outbox. Pure function for tests. */
+export function connState(online: boolean, sync: { pending: number; offline: boolean }, pollDown: boolean): { tone: 'ok' | 'warn'; text: string } {
+  const n = sync.pending;
+  if (!online || sync.offline || pollDown) return { tone: 'warn', text: n ? `Offline · ${n} waiting` : 'Offline' };
+  if (n) return { tone: 'ok', text: `Syncing ${n}` };
+  return { tone: 'ok', text: 'Online' };
 }
 
-export function NetPill() {
-  const s = useApp((x) => x);
-  const paper = paperMode(s);
-  const pend = s.ops.filter((o) => !o.synced).length;
-  const up = s.net.tier === 'resilient' ? s.net.power || s.net.ups > 0 : s.net.internet && s.net.power;
-  const reach = up && s.net.deviceWifi;
-  let cls = '';
-  let text = '';
-  let ic = 'cloud';
-  if (paper) { cls = 'bad'; text = 'Paper mode'; ic = 'printer'; }
-  else if (!reach) { cls = 'warn'; text = pend ? `Offline · ${pend} waiting` : 'Offline · saved on device'; ic = 'cloudoff'; }
-  else if (s.reconciling) { cls = 'warn'; text = 'Catching up…'; ic = 'refresh'; }
-  else { text = s.net.tier === 'resilient' ? 'Edge node · on LAN' : 'Cloud · online'; ic = 'cloud'; }
+export function ConnChip() {
+  const online = useBrowserOnline();
+  const sync = useUI((s) => s.sync);
+  const pollDown = useUI((s) => s.pollDown);
+  const { tone, text } = connState(online, sync, pollDown);
+  const icon = tone === 'warn' ? 'cloudoff' : sync.pending ? 'cloud' : '';
+  const long = tone === 'warn' ? (sync.pending ? `${sync.pending} change${sync.pending === 1 ? ' is' : 's are'} saved on this device and will send when the connection returns.` : 'Changes are saved on this device.') : '';
   return (
-    <span className={`netpill ${cls}`} role="status" aria-label={`Connection: ${text}`}>
-      {reach && !s.reconciling && !paper ? <span className="live" aria-hidden="true" /> : <Icon name={ic} size={16} weight="fill" />}
-      {text}
+    <span className={`conn ${tone === 'warn' ? 'warn' : ''}`} role="status" aria-live="polite" title={long || undefined}>
+      {icon ? <Icon name={icon} size={16} weight="fill" /> : <span className="dot" aria-hidden="true" />}
+      <span>{text}</span>
+      {long && <span className="sr">{long}</span>}
     </span>
   );
 }
 
-export const useScrolled = () => {
-  const [scrolled, setScrolled] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const on = () => setScrolled(el.scrollTop > 36);
-    el.addEventListener('scroll', on, { passive: true });
-    return () => el.removeEventListener('scroll', on);
-  }, []);
-  return { ref, scrolled };
-};
-
-export const readState = () => app.get();
-
-/** Large-title screen: the compact title fades into a glass bar as the list scrolls. */
+/** One header for every screen: the title and its line, then the actions. */
 export function Screen({ title, subtitle, trailing, children }: { title: string; subtitle?: ReactNode; trailing?: ReactNode; children: ReactNode }) {
-  const { ref, scrolled } = useScrolled();
+  const tier = useTier();
   return (
-    <main className="screen" ref={ref} id="main" tabIndex={-1}>
-      <header className={`nav ${scrolled ? 'scrolled' : ''}`}>
-        <div className="nav-in nav-row">
-          <span className="nav-title-sm" aria-hidden="true">{title}</span>
-          <span style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>{trailing}</span>
-        </div>
-      </header>
+    <main className="screen" id="main" tabIndex={-1}>
       <div className="inner">
-        <div className="page-head">
-          <h1 className="t-large">{title}</h1>
-          {subtitle && <p className="t-sub c2" style={{ margin: 0 }}>{subtitle}</p>}
-        </div>
+        <header className="page-head">
+          <div>
+            <h1 className="t-large">{title}</h1>
+            {subtitle && <p className="t-sub c2" style={{ margin: 0 }}>{subtitle}</p>}
+          </div>
+          {(tier !== 'phone' || trailing) && (
+            <div className="page-actions">
+              {tier !== 'phone' && <ConnChip />}
+              {trailing}
+            </div>
+          )}
+        </header>
         {children}
       </div>
     </main>

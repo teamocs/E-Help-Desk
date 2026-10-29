@@ -3,7 +3,7 @@ import { motion, useMotionValue, useTransform } from 'motion/react';
 import { ago, isBlocked, isOpen, sla } from '../domain/rules';
 import { hold, openComposer, setUI, useApp, useUI } from '../domain/store';
 import type { Item, Request, State } from '../domain/types';
-import { Button, DeptChip, Group, Icon, NetPill, Pill, Ring, Screen, Segmented, useTier } from '../ui/kit';
+import { Button, DeptChip, Empty, Group, Icon, Pill, Ring, Screen, Segmented, useTier } from '../ui/kit';
 import { haptic } from '../lib/haptics';
 import { STATUS_TEXT, nextStep, toneOf } from './Detail';
 
@@ -29,7 +29,7 @@ function build(s: Pick<State, 'requests' | 'items' | 'now'>): RowData[] {
   });
 }
 
-function TicketRow({ d, hideTimers, selected, pending, now }: { d: RowData; hideTimers: boolean; selected: boolean; pending: boolean; now: number }) {
+function TicketRow({ d, selected, pending, now }: { d: RowData; selected: boolean; pending: boolean; now: number }) {
   const x = useMotionValue(0);
   const opL = useTransform(x, [0, 60], [0, 1]);
   const opR = useTransform(x, [0, -60], [0, 1]);
@@ -46,7 +46,6 @@ function TicketRow({ d, hideTimers, selected, pending, now }: { d: RowData; hide
   else if (!open.length) trailing = <Pill tone="ok">Done</Pill>;
   else if (d.phase === 'held') trailing = <Pill tone="warn">On hold</Pill>;
   else if (d.phase === 'waiting') trailing = <Pill>Waiting</Pill>;
-  else if (hideTimers) trailing = <Pill>{primary ? STATUS_TEXT[primary.status] : ''}</Pill>;
   else
     trailing = (
       <Ring ratio={d.ratio} tone={toneOf(d.ratio)}>
@@ -56,7 +55,7 @@ function TicketRow({ d, hideTimers, selected, pending, now }: { d: RowData; hide
 
   const main = (
     <button type="button" className="ticket" aria-current={selected} onClick={() => { haptic('select'); setUI({ selItem: req.id, selWo: undefined, sheet: null }); }}>
-      <span className="sr">{`Room ${req.room}. ${d.overdue && !hideTimers ? 'Overdue. ' : ''}${req.vip ? 'VIP guest. ' : ''}${pending ? 'Not yet synced. ' : ''}`}</span>
+      <span className="sr">{`Room ${req.room}. ${d.overdue ? 'Overdue. ' : ''}${primary ? `${STATUS_TEXT[primary.status]}. ` : ''}${req.vip ? 'VIP guest. ' : ''}${pending ? 'Not yet synced. ' : ''}`}</span>
       <span className={`room ${req.vip ? 'vip' : ''}`} aria-hidden="true">{req.room}</span>
       <span style={{ minWidth: 0 }}>
         <span className="t-head ellip" style={{ display: 'block' }}>{title}{more}</span>
@@ -99,12 +98,10 @@ export function Requests() {
   const pending = useApp((s) => s.pending);
   const incidents = useApp((s) => s.incidents);
   const me = useApp((s) => s.staff.find((p) => p.id === s.me));
-  const shadow = useApp((s) => s.prefs.shadow);
   const sel = useUI((s) => s.selItem);
   const tier = useTier();
   const [filter, setFilter] = useState<Filter>('open');
   const [scope, setScope] = useState<'all' | 'mine'>(me?.role === 'staff' ? 'mine' : 'all');
-  const hideTimers = shadow && (me?.role === 'manager' || me?.role === 'owner');
 
   const rows = useMemo(() => build({ requests, items, now }), [requests, items, now]);
   const scoped = rows.filter((d) => scope === 'all' || !me?.dept || d.items.some((i) => i.dept === me.dept) || (d.req.incomplete && !d.items.length));
@@ -115,21 +112,19 @@ export function Requests() {
   const held = live.filter((d) => d.phase === 'held');
   const done = scoped.filter((d) => !d.open.length && d.items.length).slice(0, 12);
   const activeInc = incidents.filter((i) => i.status === 'active');
-  const att = hideTimers ? [] : attention;
-  const rest = hideTimers ? live : calm;
 
   const list = (title: string, ds: RowData[]) =>
     ds.length > 0 && (
       <Group title={title}>
-        {ds.map((d) => <TicketRow key={d.req.id} d={d} hideTimers={hideTimers} selected={sel === d.req.id} pending={pending.includes(d.req.id)} now={now} />)}
+        {ds.map((d) => <TicketRow key={d.req.id} d={d} selected={sel === d.req.id} pending={pending.includes(d.req.id)} now={now} />)}
       </Group>
     );
 
   return (
     <Screen
       title="Requests"
-      subtitle={`${live.length} open · ${hideTimers ? 'timers hidden in shadow mode' : `${attention.filter((d) => d.overdue).length} overdue`}`}
-      trailing={<><NetPill />{tier !== 'phone' && <Button size="sm" icon="plus" feel="medium" onClick={() => openComposer()}>New request</Button>}</>}
+      subtitle={`${live.length} open · ${attention.filter((d) => d.overdue).length} overdue`}
+      trailing={tier !== 'phone' && <Button size="sm" icon="plus" feel="medium" onClick={() => openComposer()}>New request</Button>}
     >
       {activeInc.length > 0 && (
         <button type="button" className="banner bad" style={{ width: '100%', textAlign: 'left', marginBottom: 12 }} onClick={() => setUI({ sheet: 'incident', focusSafetyId: activeInc[0].id })}>
@@ -139,16 +134,18 @@ export function Requests() {
       )}
       <Segmented<Filter> label="Filter" value={filter} onChange={setFilter} options={[{ value: 'open', label: 'Open' }, { value: 'overdue', label: 'Overdue' }, { value: 'hold', label: 'On hold' }, { value: 'done', label: 'Done' }]} />
       {me?.dept && (
-        <div style={{ marginTop: 10 }}>
+        <div style={{ marginTop: 8 }}>
           <Segmented<'all' | 'mine'> label="Scope" value={scope} onChange={setScope} options={[{ value: 'all', label: 'All departments' }, { value: 'mine', label: `My department` }]} />
         </div>
       )}
-      {filter === 'open' && (<>{list('Finish logging', finish)}{list('Needs attention', att)}{list('In progress', rest)}</>)}
-      {filter === 'overdue' && (hideTimers ? <p className="c2" style={{ padding: 16 }}>Timers are hidden while the pilot runs in shadow mode.</p> : list('Overdue', live.filter((d) => d.overdue)))}
+      {filter === 'open' && (<>{list('Finish logging', finish)}{list('Needs attention', attention)}{list('In progress', calm)}</>)}
+      {filter === 'overdue' && list('Overdue', live.filter((d) => d.overdue))}
       {filter === 'hold' && list('On hold', held)}
       {filter === 'done' && list('Done this shift', done)}
-      {((filter === 'open' && !finish.length && !live.length) || (filter === 'hold' && !held.length) || (filter === 'done' && !done.length) || (filter === 'overdue' && !hideTimers && !live.some((d) => d.overdue))) && (
-        <p className="c2" style={{ padding: '2rem 16px', textAlign: 'center' }}>Nothing here right now.</p>
+      {((filter === 'open' && !finish.length && !live.length) || (filter === 'hold' && !held.length) || (filter === 'done' && !done.length) || (filter === 'overdue' && !live.some((d) => d.overdue))) && (
+        filter === 'open'
+          ? <Empty icon="bell" text="No open requests. When a guest calls, log the room and what they need." action="New request" onAction={() => openComposer()} />
+          : <Empty icon={filter === 'done' ? 'tick' : filter === 'hold' ? 'hourglass' : 'clock'} text={filter === 'done' ? 'Nothing finished yet this shift.' : filter === 'hold' ? 'Nothing is on hold.' : 'Nothing is overdue.'} />
       )}
     </Screen>
   );

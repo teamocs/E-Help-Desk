@@ -6,15 +6,15 @@ import { staffApi } from '../domain/staffApi';
 import { haptic, tone } from '../lib/haptics';
 import { springs, useSafeMotion } from '../lib/motion';
 import { Avatar, Icon } from '../ui/kit';
+import { Brand } from '../App';
 
 /** Fast PIN sign-in on a shared device. One tap on a name, four digits, in. */
 export function Lock() {
   const all = useApp((s) => s.staff);
-  const isRemote = useUI((s) => s.remote);
   const deviceOnly = useUI((s) => s.deviceOnly);
   const signedIn = useApp((s) => s.me);
-  // On the real desk everyone active is listed (the owner or manager account is not a PIN person).
-  const staff = isRemote ? all.filter((p) => p.id !== 'member') : all.filter((p) => p.onShift);
+  // Everyone active is listed (the owner or manager account is not a PIN person).
+  const staff = all.filter((p) => p.id !== 'member');
   const [who, setWho] = useState(staff[0]?.id ?? '');
   const [pin, setPin] = useState('');
   const [err, setErr] = useState(false);
@@ -34,16 +34,14 @@ export function Lock() {
     if (pin.length !== 4 || !who) return;
     let stale = false;
     const t = setTimeout(async () => {
-      if (isRemote) {
-        const r = await staffApi.current?.signIn(who, pin);
-        if (stale) return;
-        if (!r?.ok) {
-          haptic('error');
-          setErr(true);
-          setMsg(r?.error ?? 'Could not check the PIN. Try again.');
-          setPin('');
-          return;
-        }
+      const r = await staffApi.current?.signIn(who, pin);
+      if (stale) return;
+      if (!r?.ok) {
+        haptic('error');
+        setErr(true);
+        setMsg(r?.error ?? 'Could not check the PIN. Try again.');
+        setPin('');
+        return;
       }
       haptic('success');
       tone('success');
@@ -53,7 +51,7 @@ export function Lock() {
       stale = true;
       clearTimeout(t);
     };
-  }, [pin, who, isRemote]);
+  }, [pin, who]);
 
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
@@ -67,9 +65,9 @@ export function Lock() {
   return (
     <main className="lockwrap" id="main">
       <motion.div {...enter} style={{ width: 'min(440px, 100%)', textAlign: 'center' }}>
-        <div className="brand-mark" style={{ margin: '0 auto 14px', width: 48, height: 48, borderRadius: 14, background: 'var(--accent)', color: 'var(--on-accent)', display: 'grid', placeItems: 'center' }}><Icon name="bell" size={26} weight="fill" /></div>
+        <div className="lock-brand"><Brand /></div>
         <h1 className="t-title1">Who’s on shift?</h1>
-        <p className="t-sub c2" style={{ margin: '4px 0 0' }}>Pick your name, then enter your PIN.{!isRemote && ' Demo: any four digits work.'}</p>
+        <p className="t-sub c2" style={{ margin: '4px 0 0' }}>Pick your name, then enter your PIN.</p>
 
         {staff.length === 0 && (
           <p className="t-body c2" style={{ margin: '24px 0' }}>No staff have been added yet. A manager can add people in Settings on their own phone.</p>
@@ -79,7 +77,7 @@ export function Lock() {
           {staff.map((p) => (
             <button key={p.id} type="button" className="person" aria-pressed={p.id === who} onClick={() => { haptic('select'); setWho(p.id); setPin(''); }}>
               <Avatar staff={p} large />
-              <span className="t-sub" style={{ fontWeight: 600 }}>{p.name.split(' ')[0]}</span>
+              <span className="t-sub" style={{ fontWeight: 600 }}>{p.name}</span>
               <span className="t-cap c2">{ROLE_LABEL[p.role]}</span>
             </button>
           ))}
@@ -95,11 +93,11 @@ export function Lock() {
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
             <motion.button key={k} type="button" className="key" whileTap={{ scale: 0.92 }} transition={springs.instant} onClick={() => press(k)}>{k}</motion.button>
           ))}
-          {isRemote && deviceOnly && !signedIn
+          {deviceOnly && !signedIn
             ? <span className="key ghost" aria-hidden="true" />
-            : <button type="button" className="key ghost" onClick={() => setUI({ screen: isRemote ? 'app' : 'cover' })}>{isRemote ? 'Back' : 'Cover'}</button>}
+            : <button type="button" className="key ghost" onClick={() => setUI({ screen: 'app' })}>Back</button>}
           <motion.button type="button" className="key" whileTap={{ scale: 0.92 }} transition={springs.instant} onClick={() => press('0')}>0</motion.button>
-          <button type="button" className="key ghost" aria-label="Delete" onClick={() => press('<')}><Icon name="undo" /></button>
+          <button type="button" className="key ghost" aria-label="Delete last digit" onClick={() => press('<')}><Icon name="backspace" /></button>
         </div>
         <p className="t-foot c2" style={{ marginTop: 22 }}>Sessions stay open all shift. You only enter a PIN to switch people.</p>
       </motion.div>

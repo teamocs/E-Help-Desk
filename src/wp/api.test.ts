@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Command, Snapshot } from "../server/contract";
+import type { Command, Snapshot } from "../domain/contract";
 import { memoryOutbox } from "../domain/outbox";
 import { remote } from "../domain/remote";
 import { AuthError, createWpApi, memoryActor, routeUrl, storageActor } from "./api";
@@ -191,6 +191,85 @@ describe("PIN and staff calls", () => {
     expect(f.calls[0]!.body).toEqual({ name: "Ana Cruz", title: "Room attendant", role: "staff", dept: "hk", pin: "2468" });
     expect(f.calls[1]!.body).toEqual({ pin: "1357" });
     expect(f.calls[2]!.body).toEqual({ active: false });
+  });
+});
+
+describe("sign out and logins", () => {
+  it("signs out with a POST to auth/logout carrying the nonce, and forgets the PIN token", async () => {
+    const actor = memoryActor();
+    actor.set({ token: "t1", staffId: "s1", expiresAt: Date.now() + 60_000 });
+    const f = fakeFetch(() => json(200, { ok: true, redirect: "/helpdesk/login/" }));
+    const api = createWpApi(cfg, { fetch: f.fetch, actor });
+    expect(await api.logout()).toEqual({ ok: true });
+    expect(f.calls[0]!.url).toBe(`${BASE}auth/logout`);
+    expect(f.calls[0]!.method).toBe("POST");
+    expect(f.calls[0]!.headers["X-WP-Nonce"]).toBe("n1");
+    expect(actor.get()).toBeNull();
+  });
+
+  it("lists logins from { accounts } or a bare array, and reports a refusal", async () => {
+    const row = { id: 7, name: "Ana", email: "ana@hotel.test", role: "manager", disabled: false };
+    const own = { id: 1, name: "Owner", email: "o@hotel.test", role: "owner", disabled: false, self: true };
+    const wrapped = createWpApi(cfg, { fetch: fakeFetch(() => json(200, { ok: true, accounts: [own, row] })).fetch });
+    expect(await wrapped.accounts()).toEqual({ ok: true, accounts: [own, row] });
+    const bare = createWpApi(cfg, { fetch: fakeFetch(() => json(200, [{ ...row, role: "janitor", disabled: 1 }])).fetch });
+    expect(await bare.accounts()).toEqual({ ok: true, accounts: [{ ...row, role: "device", disabled: false }] });
+    const refused = createWpApi(cfg, { fetch: fakeFetch(() => json(403, { code: "rest_forbidden", message: "Owners only." })).fetch });
+    expect(await refused.accounts()).toEqual({ ok: false, error: "Owners only." });
+  });
+
+  it("creates a login and switches one off on the documented routes", async () => {
+    const f = fakeFetch((c) => (c.method === "POST" && (c.body as { email: string }).email === "dup@hotel.test" ? json(409, { ok: false, error: "An account with that email already exists." }) : json(c.method === "POST" ? 201 : 200, { ok: true })));
+    const api = createWpApi(cfg, { fetch: f.fetch });
+    expect(await api.addAccount({ name: " Ana ", email: " ana@hotel.test ", role: "supervisor" })).toEqual({ ok: true });
+    expect(await api.addAccount({ name: "B", email: "dup@hotel.test", role: "device" })).toEqual({ ok: false, error: "An account with that email already exists." });
+    expect(await api.setAccountDisabled(7, true)).toEqual({ ok: true });
+    expect(f.calls.map((c) => `${c.method} ${c.url.slice(BASE.length - 1)}`)).toEqual(["POST /accounts", "POST /accounts", "PATCH /accounts/7"]);
+    expect(f.calls[0]!.body).toEqual({ name: "Ana", email: "ana@hotel.test", role: "supervisor" });
+    expect(f.calls[2]!.body).toEqual({ disabled: true });
+  });
+});
+
+describe("who a queued command is credited to", () => {
+  it("sends the PIN token of whoever queued the command, not of whoever is signed in when it goes out", async () => {
+    const actor = memoryActor();
+    const f = fakeFetch(() => json(200, { ok: true, applied: true }));
+    const api = createWpApi(cfg, { fetch: f.fetch, actor });
+    actor.set({ token: "joel", staffId: "s1", expiresAt: Date.now() + 60_000 });
+    const byJoel = api.stamp(relay("a"));
+    actor.set(null);
+    const byAccount = api.stamp(relay("b"));
+    actor.set({ token: "liza", staffId: "s2", expiresAt: Date.now() + 60_000 });
+    // Back online with Liza signed in: the queue drains.
+    await api.command(JSON.parse(JSON.stringify(byJoel)));
+    await api.command(JSON.parse(JSON.stringify(byAccount)));
+    expect(f.calls[0]!.headers["X-Azl-Actor"]).toBe("joel");
+    expect(f.calls[1]!.headers["X-Azl-Actor"]).toBeUndefined();
+    // The stamp never reaches the server body.
+    expect(f.calls[0]!.body).toEqual(relay("a"));
+    expect(f.calls[1]!.body).toEqual(relay("b"));
+  });
+
+  it("an expired old token does not sign out the person acting now", async () => {
+    const actor = memoryActor();
+    actor.set({ token: "joel", staffId: "s1", expiresAt: Date.now() + 60_000 });
+    const api = createWpApi(cfg, { fetch: fakeFetch(() => json(403, { ok: false, error: "Sign in with your PIN again.", code: "azl_needs_pin" })).fetch, actor });
+    const old = api.stamp(relay("a"));
+    actor.set({ token: "liza", staffId: "s2", expiresAt: Date.now() + 60_000 });
+    expect(await api.command(old)).toEqual({ ok: false, error: "Sign in with your PIN again." });
+    expect(actor.get()?.token).toBe("liza");
+  });
+
+  it("the outbox stamps a command when it is queued", async () => {
+    const outbox = memoryOutbox();
+    const f = fakeFetch((c) => (c.url.endsWith("/snapshot") ? json(200, snap) : Promise.reject(new TypeError("Failed to fetch"))));
+    const actor = memoryActor();
+    actor.set({ token: "joel", staffId: "s1", expiresAt: Date.now() + 60_000 });
+    const api = createWpApi(cfg, { fetch: f.fetch, actor });
+    remote.enable({ run: (c) => api.command(c), load: async () => (await api.snapshot()).snapshot }, { snapshot: () => {}, error: () => {} }, { scope: "wp:1", outbox, retryMs: 10_000, stamp: (c) => api.stamp(c) });
+    remote.send({ type: "relay", itemId: "a" });
+    await until(async () => (await outbox.all("wp:1")).length === 1);
+    expect((await outbox.all("wp:1"))[0]!.cmd).toMatchObject({ type: "relay", _actor: "joel" });
   });
 });
 

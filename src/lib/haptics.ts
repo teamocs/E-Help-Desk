@@ -1,7 +1,6 @@
 export type Haptic = 'select' | 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
 
 export const hapticsConfig = { enabled: true, sound: true };
-export const hapticBus = new EventTarget();
 
 const PATTERN: Record<Haptic, number | number[]> = {
   select: 8,
@@ -13,15 +12,15 @@ const PATTERN: Record<Haptic, number | number[]> = {
   error: [44, 50, 44, 50, 70],
 };
 
-/** Vibration where the platform allows it, plus a bus event so the UI can show what a phone would feel. */
+/** Vibration where the platform allows it (Android phones). Silent everywhere else. */
 export function haptic(kind: Haptic): void {
   if (!hapticsConfig.enabled) return;
   try {
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) navigator.vibrate(PATTERN[kind]);
+    // Browsers refuse (and log an error) until the person has tapped the page.
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator && navigator.userActivation?.hasBeenActive !== false) navigator.vibrate(PATTERN[kind]);
   } catch {
     /* unsupported or blocked */
   }
-  hapticBus.dispatchEvent(new CustomEvent('haptic', { detail: kind }));
 }
 
 let ctx: AudioContext | null = null;

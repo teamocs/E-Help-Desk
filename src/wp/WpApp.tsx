@@ -9,8 +9,8 @@ import { AuthError, createWpApi, storageActor, type WpApi } from "./api";
 import type { AzlConfig } from "./config";
 import { startPolling } from "./poller";
 
-// The desk inside WordPress. Mirrors src/app/app/RemoteApp.tsx, but the snapshot, commands, PIN and staff calls go
-// to the plugin's REST API, and the desk polls /poll instead of reloading the snapshot on a timer.
+// The desk inside WordPress: the snapshot, commands, PIN, staff and account calls go to the plugin's REST API,
+// and the desk polls /poll for other people's changes.
 
 /** Set when WordPress says the session ended (or the account may not open the desk). */
 export const session = createStore({ lost: false });
@@ -18,8 +18,9 @@ const useLost = () => useSyncExternalStore(session.sub, () => session.get().lost
 
 const initials = (name: string) =>
   name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
-const TITLE: Record<string, string> = { owner: "Owner", manager: "Manager", supervisor: "Supervisor" };
-const MANAGERS_ONLY = { ok: false, error: "Only a manager can change staff." } as const;
+const TITLE: Record<string, string> = { owner: "Hotel owner", manager: "Manager", supervisor: "Supervisor" };
+const MANAGERS_ONLY = { ok: false, error: "Only the hotel owner or a manager can change staff." } as const;
+const OWNER_ONLY = { ok: false, error: "Only the hotel owner can manage logins." } as const;
 const RETRY_MS = 5000;
 
 export function makeApi(cfg: AzlConfig, fetchImpl?: typeof fetch): WpApi {
@@ -31,34 +32,50 @@ export function makeApi(cfg: AzlConfig, fetchImpl?: typeof fetch): WpApi {
 }
 
 /** Wires the shared store to WordPress. Returns a function that undoes it. Exported for tests. */
-export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: string | null) => void): () => void {
-  const deviceOnly = cfg.user.role === "device";
+export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: string | null) => void, go: (url: string) => void = (u) => window.location.assign(u)): () => void {
+  const role = cfg.user.role;
+  const deviceOnly = role === "device";
+  const staffAdmin = role === "owner" || role === "manager";
   // A shared phone has no manager identity: only staff who sign in with a PIN can act.
   const me: Staff | undefined = deviceOnly
     ? undefined
-    : { id: "member", name: cfg.user.name, initials: initials(cfg.user.name), role: cfg.user.role as Role, title: TITLE[cfg.user.role] ?? "Manager", onShift: true };
+    : { id: "member", name: cfg.user.name, initials: initials(cfg.user.name), role: (role === "owner" ? "owner" : role) as Role, title: TITLE[role] ?? "Manager", onShift: true };
   let alive = true;
   let stopPoll: (() => void) | null = null;
   let retry: ReturnType<typeof setTimeout> | undefined;
   const scope = `wp:${cfg.property.id}`;
 
+  setUI({ account: { name: cfg.user.name, role, hotel: cfg.theme.name || cfg.property.name, logoUrl: cfg.theme.logoUrl } });
   remote.enable(
     { run: (cmd) => api.command(cmd), load: async () => (await api.snapshot()).snapshot },
     { snapshot: (s) => applySnapshot(s, me), error: (message) => toast(message, "error"), status: (sync) => setUI({ sync }) },
-    { scope },
+    { scope, stamp: (cmd) => api.stamp(cmd) },
   );
   staffApi.current = {
     signIn: (staffId, pin) => api.pinSignIn(staffId, pin),
     signOut: () => api.pinSignOut(),
-    add: (input, pin) => (cfg.user.canManage ? api.addStaff(input, pin) : Promise.resolve(MANAGERS_ONLY)),
-    setPin: (staffId, pin) => (cfg.user.canManage ? api.setPin(staffId, pin) : Promise.resolve(MANAGERS_ONLY)),
-    remove: (staffId) => (cfg.user.canManage ? api.removeStaff(staffId) : Promise.resolve(MANAGERS_ONLY)),
+    add: (input, pin) => (staffAdmin ? api.addStaff(input, pin) : Promise.resolve(MANAGERS_ONLY)),
+    setPin: (staffId, pin) => (staffAdmin ? api.setPin(staffId, pin) : Promise.resolve(MANAGERS_ONLY)),
+    remove: (staffId) => (staffAdmin ? api.removeStaff(staffId) : Promise.resolve(MANAGERS_ONLY)),
+    logout: async () => {
+      await api.logout();
+      go(cfg.loginUrl);
+    },
+    logins: () => (role === "owner" ? api.accounts() : Promise.resolve(OWNER_ONLY)),
+    addLogin: (input) => (role === "owner" ? api.addAccount(input) : Promise.resolve(OWNER_ONLY)),
+    setLoginDisabled: (id, disabled) => (role === "owner" ? api.setAccountDisabled(id, disabled) : Promise.resolve(OWNER_ONLY)),
   };
 
   const tick = async () => {
     if (session.get().lost) return;
-    const r = await api.poll();
-    if (r.changed) await remote.refresh();
+    try {
+      const r = await api.poll();
+      setUI({ pollDown: false });
+      if (r.changed) await remote.refresh();
+    } catch (e) {
+      if (!(e instanceof AuthError)) setUI({ pollDown: true });
+      throw e;
+    }
   };
 
   const load = async () => {
@@ -70,7 +87,7 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
       // After a reload the signed acting-staff token says who was acting; the server only returns it while valid.
       const acting = actor && snapshot.staff.some((p) => p.id === actor) ? actor : null;
       app.set((s) => ({ ...s, me: acting ?? me?.id ?? null }));
-      setUI({ remote: true, deviceOnly, screen: acting || me ? "app" : "lock", tab: "requests", guide: false, sheet: null, selItem: undefined, selWo: undefined });
+      setUI({ remote: true, deviceOnly, screen: acting || me ? "app" : "lock", tab: "requests", sheet: null, selItem: undefined, selWo: undefined });
       stopPoll = startPolling(tick, cfg.pollMs);
     } catch (e) {
       if (!alive || e instanceof AuthError) return;
@@ -86,7 +103,7 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
     stopPoll?.();
     remote.disable();
     staffApi.current = null;
-    setUI({ remote: false, deviceOnly: false, screen: "cover", sync: { pending: 0, offline: false } });
+    setUI({ remote: false, deviceOnly: false, screen: "lock", sync: { pending: 0, offline: false }, pollDown: false });
     resetApp();
     app.set((s) => ({ ...s, me: null }));
   };
@@ -94,13 +111,13 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
 
 function SignInAgain({ loginUrl }: { loginUrl: string }) {
   return (
-    <div role="alertdialog" aria-modal="true" aria-labelledby="azl-signin-title" className="lockwrap" style={{ position: "fixed", inset: 0, zIndex: 100, background: "var(--bg)" }}>
-      <div style={{ width: "min(440px, 100%)", textAlign: "center" }}>
+    <div role="alertdialog" aria-modal="true" aria-labelledby="azl-signin-title" aria-describedby="azl-signin-desc" className="lockwrap" style={{ position: "fixed", inset: 0, zIndex: 100 }}>
+      <div style={{ width: "min(440px, 100%)", textAlign: "center", display: "grid", gap: 16 }}>
         <h1 id="azl-signin-title" className="t-title1">Sign in again</h1>
-        <p className="t-body c2">
-          Your WordPress sign-in has ended, or this account cannot open the help desk. Changes saved on this device are kept and will send after you sign in.
+        <p id="azl-signin-desc" className="t-body c2" style={{ margin: 0 }}>
+          Your sign-in has ended, or this account cannot open the help desk. Changes saved on this device are kept and will send after you sign in.
         </p>
-        <a className="btn btn-fill btn-lg btn-block" href={loginUrl}>Go to sign in</a>
+        <a className="btn btn-fill btn-lg btn-block" href={loginUrl} autoFocus>Go to sign in</a>
       </div>
     </div>
   );

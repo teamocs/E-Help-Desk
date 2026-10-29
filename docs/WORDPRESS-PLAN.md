@@ -224,3 +224,27 @@ Verified on the real staging MySQL: tables and roles created; staff and PIN sign
 6. The bundle is 198 KB compressed; most of it is the icon set.
 7. Run the SQL checks listed in the backend report on the real database under concurrent load (two phones on one op id, two 911 taps at once).
 8. P1: choose the pilot property, seed real staff and rooms, add `/helpdesk/` to the staff phones' home screens, shadow mode beside the radio.
+
+## 12. Version 0.2 (2026-10-30): clean repo, hotel design, roles, secure login
+
+**Repo cleanup.** The retired Next.js, Neon and Vercel code, the database migrations, the frozen prototype and the demo-only screens (Cover, Network simulator, Guided demo) were deleted. The repo is now `azalea-ehelpdesk/` (plugin), `src/` (the React desk plus `src/wp` adapter), `scripts/`, `docs/`. Run `npm test`, `npm run build:wp`, `npm run zip:wp`, `php azalea-ehelpdesk/tests/run.php`. Shared command and snapshot types live in `src/domain/contract.ts`. `npm run mock:wp` serves the desk with fake data at `http://localhost:8787/helpdesk/?role=owner&hotel=baguio` for UI work without WordPress.
+
+**Each hotel's own design, light theme only.** The plugin picks Baguio ("Pine & Lamplight": forest green on oatmeal, gold only as small tags) or Boracay (teal on warm cream) from the setting "Look" (auto-detected from the site address) and injects 25 CSS variables (`--azl-*`) into the desk and login pages. Headings are Amaranth 400, body Figtree, both bundled as local font files (no external requests). Pill buttons 48 px, cards 16 px, inputs 8 px. Dark mode is removed. A test checks the colour pairs for WCAG AA.
+
+**Roles (WordPress users, no wp-admin for hotel staff).**
+
+| Role | Desk | Staff (PINs) | Logins (accounts) | wp-admin |
+|---|---|---|---|---|
+| WordPress administrator (agency) | all | yes | yes | yes |
+| Hotel Owner (`azl_owner`) | all | yes | yes | **no** |
+| Manager (`azl_manager`) | all | yes | no | **no** |
+| Supervisor (`azl_supervisor`) | Requests, Work orders, Housekeeping, Handover, Insights | no | no | **no** |
+| Shared phone (`azl_device`) | four tabs, every action needs a staff PIN | no | no | **no** |
+
+Hotel roles hold no WordPress capabilities at all (checked on the live staging sites), wp-admin redirects them to the desk, the admin bar is hidden, and any login lands on `/helpdesk/`. The agency creates the first Hotel Owner in wp-admin (Users, Add New, role "Hotel Owner"). After that the owner adds managers, supervisors and shared phones inside the desk (Settings, Logins): the person gets an email to set a password. Accounts can be disabled, never deleted.
+
+**Login at `/helpdesk/login/`.** A branded page per hotel (no theme chrome), with forgot-password and reset pages. Security: a signed, expiring CSRF token; the same generic message for unknown user, wrong password, disabled account and no desk access; lockout after 5 failures per account and address for 15 minutes and 20 per address per hour (HTTP 429 with Retry-After); throttled reset requests that always answer the same; same-site redirects only; session lengths (owner, manager, supervisor 7 days or 12 hours; shared phone 30 days); strict Content-Security-Policy with a per-request nonce, no framing, no sniffing, no caching. REST: `auth/login`, `auth/logout`, `auth/forgot`, `auth/reset`, `accounts`.
+
+**Verified on both staging sites (plugin 0.2.x, PHP 8.3):** both login pages in the right palette and logo; wrong logins answer identically and the fifth is locked; the four roles' capabilities; the desk in the hotel's colours with the real "Online" chip, empty states and role label; Settings with the Logins section. Not yet exercised with a real non-admin account (the connector user is an administrator): sign in as an owner and confirm wp-admin redirects to the desk, and that the reset email arrives from the host.
+
+**Still open.** The marketing plugins on the sites set a tracking cookie on `/helpdesk/` (the page loads none of their scripts, but exclude `/helpdesk/` in PixelYourSite and Clarity); an owner whose phone is shared signs out other phones using the same account; no CAPTCHA (lockouts only); property name and room list are edited by the agency in wp-admin (Settings, E-Help Desk).

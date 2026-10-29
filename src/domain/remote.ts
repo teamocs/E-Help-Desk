@@ -1,7 +1,7 @@
-import type { Command, CommandResult, Snapshot } from "../server/contract";
+import type { Command, CommandResult, Snapshot } from "./contract";
 import { defaultOutbox, type Outbox } from "./outbox";
 
-// Keeps the optimistic client store in step with the server. Pure demo mode never enables it.
+// Keeps the optimistic client store in step with the server. WpApp enables it once the desk connects.
 //
 // - send() saves the command to the outbox (IndexedDB), then sends commands one at a time, in order.
 // - Each command has a client-made opId, so a resend after a dropped connection cannot apply twice.
@@ -39,6 +39,11 @@ export interface Options {
   outbox?: Outbox;
   /** First retry delay in ms; it doubles up to 30 s. */
   retryMs?: number;
+  /**
+   * Adds data to a command when it is queued, before it is saved. The WordPress desk records the PIN token of the
+   * person acting now, so a command that waits offline is still credited to them when it finally goes out.
+   */
+  stamp?: (cmd: Command) => Command;
 }
 
 interface Queued {
@@ -54,6 +59,7 @@ let hooks: Hooks | null = null;
 let outbox: Outbox = defaultOutbox();
 let scope = "";
 let retryMs = 1000;
+let stamp: (cmd: Command) => Command = (c) => c;
 let pending: Queued[] = [];
 let ready: Promise<void> = Promise.resolve();
 let gen = 0; // bumped on enable and disable; a loop from an older generation stops
@@ -139,6 +145,7 @@ export const remote = {
     outbox = o.outbox ?? defaultOutbox();
     scope = o.scope;
     retryMs = o.retryMs ?? 1000;
+    stamp = o.stamp ?? ((c) => c);
     const g = ++gen;
     // Commands saved by an earlier page load go first, ahead of anything sent since.
     ready = outbox
@@ -166,7 +173,7 @@ export const remote = {
   },
   send(draft: Draft): void {
     if (!transport) return;
-    const cmd = { ...draft, opId: crypto.randomUUID() } as Command;
+    const cmd = stamp({ ...draft, opId: crypto.randomUUID() } as Command);
     const o = outbox;
     const s = scope;
     const saved = ready.then(() => o.add(s, cmd)).catch(() => null);

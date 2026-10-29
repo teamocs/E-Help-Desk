@@ -3,34 +3,30 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
     "lint": "eslint src",
     "test": "vitest run --dir src",
     "build:wp": "vite build --config vite.wp.config.ts",
+    "dev:wp": "vite build --config vite.wp.config.ts --watch",
     "lint:php": "node scripts/lint-php.mjs",
-    "zip:wp": "node scripts/zip-wp.mjs"
+    "zip:wp": "node scripts/zip-wp.mjs",
+    "icons": "node scripts/icons.mjs",
+    "mock:wp": "node scripts/mock-wp.mjs"
   },
   "dependencies": {
-    "@neondatabase/auth": "^0.6.0-beta",
-    "@phosphor-icons/react": "^2.1.10",
     "motion": "^14.6.0",
-    "next": "16.4.3",
-    "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.12",
+    "@phosphor-icons/react": "^2.1.10",
     "@types/node": "^24.19.2",
-    "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "fake-indexeddb": "^6.2.6",
+    "next": "^16.4.3",
     "typescript": "^5",
     "vite": "^8.3.5",
     "vitest": "^5.0.5"

@@ -3,7 +3,7 @@ import { ackHandover, app, applySnapshot, assessWo, escalate, finishItem, hold, 
 import { detectSafety, hubUp, pad, sla } from './rules';
 import { memoryOutbox } from './outbox';
 import { remote } from './remote';
-import type { Command, Snapshot } from '../server/contract';
+import type { Command, Snapshot } from './contract';
 import type { Net } from './types';
 
 beforeEach(() => {

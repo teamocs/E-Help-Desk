@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { describe, expect, it } from "vitest";
-import type { Command } from "../server/contract";
+import type { Command } from "./contract";
 import { indexedDbOutbox } from "./outbox";
 
 const cmd = (id: string) => ({ type: "relay", itemId: id, opId: `op-${id}` }) as Command;

@@ -1,0 +1,554 @@
+/*
+ * Azalea e-Helpdesk sign-in pages. Light theme only.
+ * Colours, fonts and radii come from the --azl-* variables the plugin prints (Azl_Theme).
+ */
+
+*,
+*::before,
+*::after {
+	box-sizing: border-box;
+}
+
+html {
+	color-scheme: light;
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+}
+
+body {
+	margin: 0;
+	background: var(--azl-surface);
+	color: var(--azl-ink);
+	font-family: var(--azl-font-body);
+	font-size: 1rem;
+	line-height: 1.5;
+	-webkit-font-smoothing: antialiased;
+}
+
+img {
+	display: block;
+	max-width: 100%;
+}
+
+a {
+	color: var(--azl-accent-strong);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 0.2em;
+}
+
+a:hover {
+	text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+	outline: 3px solid var(--azl-accent);
+	outline-offset: 2px;
+}
+
+.azl-sr {
+	position: absolute !important;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
+}
+
+.azl-skip {
+	position: absolute;
+	left: 16px;
+	top: -100px;
+	z-index: 10;
+	padding: 12px 16px;
+	border-radius: var(--azl-radius-input);
+	background: var(--azl-surface);
+	color: var(--azl-ink);
+	box-shadow: var(--azl-shadow);
+}
+
+.azl-skip:focus {
+	top: 16px;
+}
+
+/* ---------- layout: one column on phones, two panes from 900px ---------- */
+
+.azl-shell {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: auto 1fr;
+	min-height: 100vh;
+	min-height: 100dvh;
+}
+
+@media (min-width: 900px) {
+	.azl-shell {
+		grid-template-columns: minmax(360px, 5fr) 7fr;
+		grid-template-rows: minmax(0, 1fr);
+	}
+}
+
+/* ---------- brand pane ---------- */
+
+.azl-brand {
+	position: relative;
+	overflow: hidden;
+	background: var(--azl-deep);
+	color: var(--azl-on-deep);
+	padding: 20px 16px;
+}
+
+/* A quiet lamplight glow in the corner; decorative only. */
+.azl-brand::after {
+	content: "";
+	position: absolute;
+	right: -30%;
+	bottom: -40%;
+	width: 80%;
+	aspect-ratio: 1;
+	border-radius: 50%;
+	background: radial-gradient(closest-side, color-mix(in srgb, var(--azl-gold) 22%, transparent), transparent);
+	pointer-events: none;
+}
+
+.azl-brand__inner {
+	position: relative;
+	z-index: 1;
+	max-width: 440px;
+}
+
+.azl-logo {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.azl-logo__mark {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 48px;
+	height: 48px;
+	border-radius: 12px;
+	overflow: hidden;
+}
+
+.azl-logo__mark img {
+	width: 40px;
+	height: 40px;
+	object-fit: contain;
+}
+
+/* Baguio: the site icon on a dark-green tile, edged so it reads on the deep pane too. */
+.azl-logo__mark--tile {
+	background: var(--azl-deep);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--azl-on-deep) 28%, transparent);
+}
+
+/* Boracay: the logo on a light plate, so a dark logo still reads on the deep pane. */
+.azl-logo__mark--plate {
+	background: var(--azl-surface);
+	padding: 4px;
+}
+
+.azl-logo__letter {
+	font-family: var(--azl-font-heading);
+	font-weight: 400;
+	font-size: 1.5rem;
+	line-height: 1;
+	color: var(--azl-gold);
+}
+
+.azl-logo__mark--plate .azl-logo__letter {
+	color: var(--azl-deep);
+}
+
+.azl-logo__name {
+	font-family: var(--azl-font-heading);
+	font-weight: 400;
+	font-size: 1.25rem;
+	line-height: 1.2;
+	color: var(--azl-on-deep);
+	overflow-wrap: anywhere;
+}
+
+.azl-brand__words {
+	display: none;
+}
+
+@media (min-width: 900px) {
+	.azl-brand {
+		display: flex;
+		align-items: center;
+		padding: 48px clamp(32px, 5vw, 72px);
+	}
+
+	.azl-brand__words {
+		display: block;
+		margin-top: 56px;
+	}
+
+	.azl-brand__kicker {
+		margin: 0 0 16px;
+		font-size: 0.8125rem;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--azl-gold);
+	}
+
+	.azl-brand__line {
+		margin: 0;
+		font-family: var(--azl-font-heading);
+		font-weight: 400;
+		font-size: clamp(2.25rem, 3.4vw, 3rem);
+		line-height: 1.1;
+		color: var(--azl-on-deep);
+		text-wrap: balance;
+	}
+
+	.azl-brand__line::after {
+		content: "";
+		display: block;
+		width: 56px;
+		height: 2px;
+		margin-top: 24px;
+		background: var(--azl-gold);
+	}
+
+	.azl-brand__sub {
+		margin: 24px 0 0;
+		max-width: 34ch;
+		font-size: 1.0625rem;
+		color: var(--azl-on-deep);
+		opacity: 0.92;
+	}
+}
+
+/* ---------- form pane ---------- */
+
+.azl-panel {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	background: var(--azl-surface);
+	outline: none;
+}
+
+.azl-panel__inner {
+	flex: 1 0 auto;
+	width: 100%;
+	max-width: 440px;
+	margin: 0 auto;
+	padding: 32px 16px 24px;
+}
+
+@media (min-width: 900px) {
+	.azl-panel__inner {
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+		padding: 64px 32px 32px;
+	}
+}
+
+.azl-title {
+	margin: 0;
+	font-family: var(--azl-font-heading);
+	font-weight: 400;
+	font-size: 2rem;
+	line-height: 1.15;
+	color: var(--azl-ink);
+}
+
+.azl-title:focus {
+	outline: none;
+}
+
+.azl-lead {
+	margin: 8px 0 0;
+	color: var(--azl-muted);
+}
+
+.azl-form {
+	display: grid;
+	gap: 20px;
+	margin-top: 28px;
+}
+
+.azl-field {
+	display: grid;
+	gap: 6px;
+}
+
+.azl-field label {
+	font-weight: 600;
+	font-size: 0.9375rem;
+}
+
+.azl-hint {
+	margin: -2px 0 2px;
+	font-size: 0.875rem;
+	color: var(--azl-muted);
+}
+
+.azl-field input {
+	width: 100%;
+	min-height: 48px;
+	padding: 10px 14px;
+	border: 1px solid color-mix(in srgb, var(--azl-ink) 32%, transparent);
+	border-radius: var(--azl-radius-input);
+	background: var(--azl-surface);
+	color: var(--azl-ink);
+	font: inherit;
+	font-size: 1rem; /* 16px: phones do not zoom in */
+	transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.azl-field input:hover {
+	border-color: color-mix(in srgb, var(--azl-ink) 50%, transparent);
+}
+
+.azl-field input:focus-visible {
+	outline: none;
+	border-color: var(--azl-accent);
+	box-shadow: 0 0 0 3px color-mix(in srgb, var(--azl-accent) 35%, transparent);
+}
+
+.azl-field input[aria-invalid="true"] {
+	border-color: var(--azl-bad);
+	border-width: 2px;
+	padding: 9px 13px;
+}
+
+.azl-pass {
+	position: relative;
+}
+
+.azl-pass input {
+	padding-right: 84px;
+}
+
+.azl-pass input[aria-invalid="true"] {
+	padding-right: 83px;
+}
+
+.azl-reveal {
+	position: absolute;
+	top: 2px;
+	right: 2px;
+	bottom: 2px;
+	min-width: 72px;
+	padding: 0 14px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--azl-accent-strong);
+	font: inherit;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+.azl-reveal:hover {
+	background: var(--azl-accent-soft);
+}
+
+.azl-check {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-height: 44px;
+	cursor: pointer;
+}
+
+.azl-check input {
+	flex: none;
+	width: 22px;
+	height: 22px;
+	margin: 0;
+	accent-color: var(--azl-accent-strong);
+	cursor: pointer;
+}
+
+/* ---------- buttons ---------- */
+
+.azl-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	width: 100%;
+	min-height: 48px;
+	padding: 12px 24px;
+	border: 0;
+	border-radius: var(--azl-radius-pill);
+	background: var(--azl-accent-strong);
+	color: var(--azl-on-accent);
+	font: inherit;
+	font-size: 1rem;
+	font-weight: 600;
+	text-decoration: none;
+	cursor: pointer;
+	box-shadow: var(--azl-shadow);
+	transition: background-color 0.15s, transform 0.1s;
+}
+
+.azl-btn:hover {
+	background: color-mix(in srgb, var(--azl-accent-strong) 86%, #000);
+	text-decoration: none;
+}
+
+.azl-btn:active {
+	transform: translateY(1px);
+}
+
+.azl-btn:focus-visible {
+	outline: 3px solid var(--azl-accent);
+	outline-offset: 3px;
+}
+
+.azl-btn[disabled] {
+	cursor: progress;
+	opacity: 0.85;
+}
+
+.azl-btn--link {
+	width: auto;
+	margin-top: 24px;
+}
+
+.azl-btn__spin {
+	display: none;
+	width: 18px;
+	height: 18px;
+	border: 2px solid color-mix(in srgb, var(--azl-on-accent) 35%, transparent);
+	border-top-color: var(--azl-on-accent);
+	border-radius: 50%;
+	animation: azl-spin 0.8s linear infinite;
+}
+
+.azl-form[aria-busy="true"] .azl-btn__spin {
+	display: block;
+}
+
+@keyframes azl-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* ---------- messages: icon + words + colour, never colour alone ---------- */
+
+.azl-alert:empty {
+	display: none;
+}
+
+.azl-alert {
+	display: flex;
+	gap: 10px;
+	align-items: flex-start;
+	margin: 0;
+	padding: 12px 14px;
+	border-radius: var(--azl-radius-input);
+	border-left: 4px solid currentColor;
+	font-size: 0.9375rem;
+	font-weight: 500;
+}
+
+.azl-alert::before {
+	flex: none;
+	display: grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	margin-top: 1px;
+	border-radius: 50%;
+	color: var(--azl-surface);
+	font-size: 0.8125rem;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.azl-alert--error {
+	background: var(--azl-bad-soft);
+	color: var(--azl-bad);
+}
+
+.azl-alert--error::before {
+	background: var(--azl-bad);
+	content: "!";
+}
+
+.azl-alert--ok {
+	background: var(--azl-ok-soft);
+	color: var(--azl-ok);
+}
+
+.azl-alert--ok::before {
+	background: var(--azl-ok);
+	content: "\2713";
+}
+
+.azl-alert--static {
+	margin-top: 4px;
+}
+
+.azl-alt {
+	margin: 0;
+	text-align: center;
+}
+
+.azl-alt a {
+	display: inline-block;
+	padding: 10px 4px;
+	font-weight: 600;
+}
+
+/* ---------- footer ---------- */
+
+.azl-foot {
+	width: 100%;
+	max-width: 440px;
+	margin: 0 auto;
+	padding: 16px 16px 24px;
+	border-top: 1px solid var(--azl-line);
+	font-size: 0.875rem;
+	color: var(--azl-muted);
+	text-align: center;
+}
+
+.azl-foot p {
+	margin: 0;
+}
+
+.azl-foot__name {
+	margin-top: 4px !important;
+	font-family: var(--azl-font-heading);
+	font-size: 1rem;
+	color: var(--azl-ink);
+}
+
+@media (min-width: 900px) {
+	.azl-foot {
+		padding: 20px 32px 32px;
+	}
+}
+
+/* ---------- motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation: none !important;
+		transition: none !important;
+	}
+
+	.azl-form[aria-busy="true"] .azl-btn__spin {
+		display: none;
+	}
+}

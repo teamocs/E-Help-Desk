@@ -1,10 +1,21 @@
-# E-Help Desk
+# Azalea e-Helpdesk
 
-Hotel service-request and maintenance desk, built as multi-tenant SaaS. Azalea Hotels is the pilot tenant.
+Hotel service-request and maintenance desk, shipped as a WordPress plugin for the two Azalea sites. The plugin (`azalea-ehelpdesk/`) is a PHP REST backend that serves a React desk built from `src/`.
 
-- `docs/PLAN.md` — current build plan and stack decisions
-- `docs/ORCHESTRATION.md` — how the work is run (Jev routing, sprints, skills). Draft
-- `src/` — the Next.js app: the demo at `/` (in-memory data), `/sign-in` and `/dashboard` (Neon Auth, tenant data), and `/app` (the same screens backed by the database through server commands, `src/server/`). `npm install`, then `npm run dev`, `npm test`, `npm run lint`, `npm run build`
-- `db/` — SQL migrations, seed, and `apply.mjs` / `verify-neon.mjs` for a real Neon branch. Needs `DATABASE_URL` (owner), `APP_DATABASE_URL` (app_user), `NEON_AUTH_BASE_URL` and `NEON_AUTH_COOKIE_SECRET` in `.env.local` or the Vercel project. Never commit these.
-- `docs/` — build brief, stack matrix, Phase 1a plan, built prototype (`azalea-ehelpdesk-prototype.html`)
-- `prototype/` — Vite + React source of the prototype (`npm install && npm run dev`)
+## Layout
+
+- `azalea-ehelpdesk/` — the plugin: PHP (`includes/`, `tests/`) and the built desk in `assets/desk/` (generated, committed).
+- `src/` — the React desk: `screens/`, `ui/`, `domain/` (store, rules, command contract), `wp/` (REST client, poller, WordPress shell), `styles.css`.
+- `scripts/` — `zip-wp.mjs` (package the plugin to `dist/`), `lint-php.mjs`.
+- `docs/` — plans and history. `WORDPRESS-PLAN.md` is current; the rest describes the retired Next.js/Neon build.
+
+## Commands
+
+- `npm install`
+- `npm test` — vitest on `src/`
+- `npm run lint`, `npx tsc --noEmit`
+- `npm run build:wp` — bundle the desk into `azalea-ehelpdesk/assets/desk/` (`npm run dev:wp` rebuilds on change)
+- `npm run zip:wp` — build the installable zip in `dist/`
+- `php azalea-ehelpdesk/tests/run.php` — PHP tests
+
+Deploying to the sites: see `docs/WORDPRESS-PLAN.md` section 6.

@@ -44,7 +44,7 @@ export function Safety() {
 
             <motion.div initial={{ y: 12, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ ...springs.gentle, delay: 0.1 }} style={{ background: live ? 'rgba(255,255,255,0.14)' : 'var(--surface)', borderRadius: 16, padding: '14px 16px' }}>
               <p className="t-head" style={{ margin: 0 }}>Staff notified (not BFP/911)</p>
-              <p className="t-sub" style={{ margin: '4px 0 0' }}>Duty Manager Ana Villanueva and Security were alerted over the hotel network. This works with the internet down.</p>
+              <p className="t-sub" style={{ margin: '4px 0 0' }}>Everyone signed in to the help desk sees this alert within seconds. The help desk does not call BFP or 911 for you.</p>
               <hr style={{ border: 0, borderTop: '0.5px solid currentColor', opacity: 0.3, margin: '12px 0' }} />
               <p className="t-head" style={{ margin: 0 }}>BFP / 911 called by ____ at ____</p>
               {inc.called911 ? (

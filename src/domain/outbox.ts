@@ -1,4 +1,4 @@
-import type { Command } from "../server/contract";
+import type { Command } from "./contract";
 
 // A disk-backed queue of commands that have not reached the server yet. remote.ts writes each command
 // here before sending and removes it once the server answers, so a reload or a dead Wi-Fi zone loses nothing.

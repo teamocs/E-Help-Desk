@@ -2,7 +2,7 @@ import { motion } from 'motion/react';
 import { isOpen, sla } from '../domain/rules';
 import { ackHandover, returnOrphans, setUI, useApp } from '../domain/store';
 import { springs } from '../lib/motion';
-import { Button, DeptChip, Group, Icon, NetPill, Pill, Row, Screen } from '../ui/kit';
+import { Button, DeptChip, Group, Icon, Pill, Row, Screen } from '../ui/kit';
 
 /** A sign-off older than one shift belongs to an earlier handover, so the next officer can sign again. */
 const SHIFT_MS = 8 * 3_600_000;
@@ -32,10 +32,10 @@ export function Handover() {
   ];
 
   return (
-    <Screen title="Shift handover" subtitle="One screen for the next officer. Nothing lives in someone’s head." trailing={<NetPill />}>
-      <div className="group" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)' }}>
-        {tiles.map((t, i) => (
-          <div key={t.label} style={{ padding: '14px 16px', borderTop: i > 1 ? '0.5px solid var(--sep)' : 0, borderLeft: i % 2 ? '0.5px solid var(--sep)' : 0 }}>
+    <Screen title="Shift handover" subtitle="One screen for the next officer. Nothing lives in someone’s head.">
+      <div className="group tiles">
+        {tiles.map((t) => (
+          <div key={t.label} className="tile">
             <div className="stat" style={{ color: t.tone || undefined }}>{t.n}</div>
             <div className="t-sub c2">{t.label}</div>
           </div>

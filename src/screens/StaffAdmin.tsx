@@ -74,8 +74,8 @@ export function StaffAdmin() {
               </form>
             ) : (
               <span style={{ display: 'flex', gap: 8 }}>
-                <Button size="sm" variant="gray" onClick={() => { setEditing(p.id); setNewPin(''); setError(''); }}>Set PIN</Button>
-                <Button size="sm" variant="gray" onClick={() => { if (window.confirm(`Remove ${p.name}? They will no longer be able to sign in.`)) void run(() => api.remove(p.id), `${p.name} removed.`); }}>Remove</Button>
+                <Button size="sm" variant="gray" aria-label={`Set a new PIN for ${p.name}`} onClick={() => { setEditing(p.id); setNewPin(''); setError(''); }}>Set PIN</Button>
+                <Button size="sm" variant="gray" aria-label={`Remove ${p.name}`} onClick={() => { if (window.confirm(`Remove ${p.name}? They will no longer be able to sign in.`)) void run(() => api.remove(p.id), `${p.name} removed.`); }}>Remove</Button>
               </span>
             )}
           </div>
@@ -83,25 +83,26 @@ export function StaffAdmin() {
       </Group>
 
       <form onSubmit={add}>
-        <Group title="Add a person">
-          <div className="row"><input className="field" placeholder="Full name" aria-label="Full name" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} required /></div>
-          <div className="row"><input className="field" placeholder="Job title, e.g. Room attendant" aria-label="Job title" maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
-          <div className="row">
-            <select className="field" aria-label="Role" value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}>
+        <h2 className="group-title">Add a person</h2>
+        <div className="group" style={{ padding: 16, display: 'grid', gap: 14 }}>
+          <div><label className="field-label" htmlFor="st-name">Full name</label><input id="st-name" className="field" autoComplete="off" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} required /></div>
+          <div><label className="field-label" htmlFor="st-title">Job title</label><input id="st-title" className="field" placeholder="e.g. Room attendant" autoComplete="off" maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
+          <div>
+            <label className="field-label" htmlFor="st-role">Role</label>
+            <select id="st-role" className="field" value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}>
               {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
             </select>
           </div>
-          <div className="row">
-            <select className="field" aria-label="Department" value={dept} onChange={(e) => setDept(e.target.value as Dept | '')}>
+          <div>
+            <label className="field-label" htmlFor="st-dept">Department</label>
+            <select id="st-dept" className="field" value={dept} onChange={(e) => setDept(e.target.value as Dept | '')}>
               <option value="">No department</option>
               {(Object.keys(DEPTS) as Dept[]).map((d) => <option key={d} value={d}>{DEPTS[d].label}</option>)}
             </select>
           </div>
-          <div className="row"><input className="field" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={4} placeholder="Four-digit PIN" aria-label="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required /></div>
-        </Group>
-        {error && <div className="banner bad" role="alert" style={{ marginTop: 12 }}><span className="t-sub">{error}</span></div>}
-        <div style={{ marginTop: 12 }}>
-          <button type="submit" className="btn btn-fill btn-lg btn-block" disabled={busy || !name.trim() || !title.trim() || pin.length !== 4}>Add person</button>
+          <div><label className="field-label" htmlFor="st-pin">Four-digit PIN</label><input id="st-pin" className="field" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required /></div>
+          {error && <p className="field-help" role="alert" style={{ color: 'var(--bad)', margin: 0 }}>{error}</p>}
+          <button type="submit" className="btn btn-fill btn-block" disabled={busy || !name.trim() || !title.trim() || pin.length !== 4}>Add person</button>
         </div>
       </form>
     </>

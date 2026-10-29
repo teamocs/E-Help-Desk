@@ -1,27 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BUNDLES, HAZARDS, PRESETS, detectSafety } from '../domain/rules';
-import { logRequest, raiseSafety, setUI, toast, ui, useUI } from '../domain/store';
+import { logRequest, raiseSafety, setUI, toast, ui, useApp, useUI } from '../domain/store';
 import { haptic, tone } from '../lib/haptics';
 import { springs } from '../lib/motion';
 import { Button, Group, Icon } from '../ui/kit';
 import { Sheet } from '../ui/sheet';
 
-const RECENT = [{ r: '508', vip: true }, { r: '417' }, { r: '305' }, { r: '412' }, { r: '228' }];
-
 function Body() {
   const seed = useUI((s) => s.composerSeed);
-  const stored = useUI((s) => s.composerOpenedAt);
-  const [openedAt] = useState(() => stored ?? Date.now());
+  const requests = useApp((s) => s.requests);
+  // The rooms of the latest tickets, newest first, for one-tap repeat requests.
+  const recent = useMemo(() => [...new Set([...requests].sort((a, b) => b.createdAt - a.createdAt).map((r) => r.room))].slice(0, 5), [requests]);
   const [room, setRoom] = useState(seed?.room ?? '');
+  const [vip, setVip] = useState(false);
   const [presets, setPresets] = useState<string[]>(seed?.preset ? [seed.preset] : []);
   const [bundle, setBundle] = useState<string | undefined>();
   const [remarks, setRemarks] = useState(seed?.text ?? '');
-  const [ms, setMs] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setMs(Date.now() - openedAt), 100);
-    return () => clearInterval(t);
-  }, [openedAt]);
 
   const hazard = useMemo(() => detectSafety(remarks), [remarks]);
   const ready = room.length >= 3 && (presets.length > 0 || !!bundle);
@@ -34,11 +29,10 @@ function Body() {
   };
 
   const finish = (later: boolean) => {
-    const took = ((Date.now() - openedAt) / 1000).toFixed(1);
-    logRequest({ room, presets: later ? [] : presets, bundle: later ? undefined : bundle, remarks: remarks.trim() || undefined, later, vip: room === '508' });
+    logRequest({ room, presets: later ? [] : presets, bundle: later ? undefined : bundle, remarks: remarks.trim() || undefined, later, vip });
     haptic('success');
     tone('success');
-    toast(later ? `Room ${room} saved. Finish it from the red dot.` : `Logged in ${took} s. Relayed to the right teams.`, 'success');
+    toast(later ? `Room ${room} saved. Add what they need from Finish logging.` : `Room ${room} logged and sent to the right teams.`, 'success');
     setUI({ sheet: null, selItem: undefined });
   };
 
@@ -50,22 +44,18 @@ function Body() {
 
   return (
     <div onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && (e.target as HTMLElement).tagName !== 'TEXTAREA') key(e.key); if (e.key === 'Backspace' && (e.target as HTMLElement).tagName !== 'TEXTAREA') key('<'); }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
-        <p className="t-foot c2" style={{ margin: 0 }}>Room, then what they need. No typing required.</p>
-        <span className="t-foot mono c2" aria-label={`${(ms / 1000).toFixed(1)} seconds`}>{(ms / 1000).toFixed(1)}s</span>
-      </div>
+      <p className="t-sub c2" style={{ margin: 0 }}>Room, then what they need. No typing required.</p>
 
       <Group title="Room">
         <div className="row" style={{ justifyContent: 'center', minHeight: '4.2rem' }}>
-          <span className="t-large" role="img" aria-live="polite" aria-label={room ? `Room ${room}` : 'No room entered'} style={{ letterSpacing: '0.04em', color: room ? 'var(--fg)' : 'var(--fg-3)' }}>{room || '— — —'}</span>
+          <output className="t-large" aria-live="polite" aria-label={room ? `Room ${room}` : 'No room entered'} style={{ letterSpacing: '0.06em', color: room ? 'var(--fg)' : 'var(--fg-2)' }}>{room || '– – –'}</output>
         </div>
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <span className="t-foot c2">Recent</span>
-          {RECENT.map((x) => (
-            <button key={x.r} type="button" className="chip" aria-pressed={room === x.r} onClick={() => { haptic('select'); setRoom(x.r); }}>
-              {x.r}{x.vip && <span className="pill accent" style={{ height: '1.1rem' }}>VIP</span>}
-            </button>
+          {recent.length > 0 && <span className="t-foot c2" id="recent-rooms">Recent</span>}
+          {recent.map((r) => (
+            <button key={r} type="button" className="chip" aria-pressed={room === r} aria-describedby="recent-rooms" onClick={() => { haptic('select'); setRoom(r); }}>{r}</button>
           ))}
+          <button type="button" className="chip" aria-pressed={vip} style={{ marginLeft: 'auto' }} onClick={() => { haptic('select'); setVip((v) => !v); }}><Icon name="star" size={16} weight={vip ? 'fill' : 'regular'} /> VIP guest</button>
         </div>
         <div className="keys" style={{ gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, margin: 0, padding: '10px 16px 14px', maxWidth: 340, marginInline: 'auto' }} role="group" aria-label="Room number pad">
           {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((k) => (
@@ -73,14 +63,14 @@ function Body() {
           ))}
           <motion.button type="button" className="key ghost" style={{ width: '100%', height: '3.3rem' }} whileTap={{ scale: 0.94 }} onClick={() => key('C')} aria-label="Clear room">Clear</motion.button>
           <motion.button type="button" className="key" style={{ width: '100%', height: '3.3rem', borderRadius: 14, fontSize: '1.4rem' }} whileTap={{ scale: 0.94 }} onClick={() => key('0')}>0</motion.button>
-          <motion.button type="button" className="key ghost" style={{ width: '100%', height: '3.3rem' }} whileTap={{ scale: 0.94 }} onClick={() => key('<')} aria-label="Delete last digit"><Icon name="undo" /></motion.button>
+          <motion.button type="button" className="key ghost" style={{ width: '100%', height: '3.3rem' }} whileTap={{ scale: 0.94 }} onClick={() => key('<')} aria-label="Delete last digit"><Icon name="backspace" /></motion.button>
         </div>
       </Group>
 
       <Group title="What they need">
         <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
           {BUNDLES.map((b) => (
-            <button key={b.key} type="button" className="chip" style={{ background: bundle === b.key ? undefined : 'var(--accent-soft)', color: bundle === b.key ? undefined : 'var(--accent)' }} aria-pressed={bundle === b.key} onClick={() => { haptic('medium'); setBundle(bundle === b.key ? undefined : b.key); }} title={b.hint}>
+            <button key={b.key} type="button" className="chip" style={{ background: bundle === b.key ? undefined : 'var(--accent-soft)', color: bundle === b.key ? undefined : 'var(--accent-strong)' }} aria-pressed={bundle === b.key} onClick={() => { haptic('medium'); setBundle(bundle === b.key ? undefined : b.key); }} title={b.hint}>
               <Icon name="bolt" size={16} weight="fill" /> {b.label} bundle
             </button>
           ))}
@@ -95,7 +85,7 @@ function Body() {
 
       <Group title="Remark (optional)" note="Safety words in English, Tagalog and Bikol are checked on this device, with or without internet.">
         <div className="row">
-          <textarea className="field" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Add detail only if it helps. Try “may usok sa hallway”." aria-label="Remark" />
+          <textarea className="field" rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Add detail only if it helps." aria-label="Remark" />
         </div>
       </Group>
 

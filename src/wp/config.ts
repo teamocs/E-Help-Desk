@@ -14,6 +14,8 @@ export interface AzlConfig {
   /** This install's property. `id` only scopes the offline queue on this device. */
   property: { id: string; name: string };
   user: { name: string; role: AzlRole; canManage: boolean };
+  /** The hotel's look. The colours come as --azl-* CSS variables in a <style> the plugin prints; this is the rest. */
+  theme: { key: string; name: string; logoUrl: string };
   /** Plugin version, for support. */
   version: string;
 }
@@ -37,6 +39,12 @@ export function readConfig(w: { AZL?: unknown }): AzlConfig {
       name: String(c.user.name ?? ""),
       role: ROLES.includes(c.user.role as AzlRole) ? (c.user.role as AzlRole) : "device",
       canManage: c.user.canManage === true,
+    },
+    theme: {
+      key: String(c.theme?.key ?? "baguio"),
+      name: String(c.theme?.name || c.property.name || ""),
+      // Only http(s) or site-relative logo addresses; anything else falls back to the bell mark.
+      logoUrl: typeof c.theme?.logoUrl === "string" && /^(https?:\/\/|\/)/i.test(c.theme.logoUrl) ? c.theme.logoUrl : "",
     },
     version: String(c.version ?? ""),
   };

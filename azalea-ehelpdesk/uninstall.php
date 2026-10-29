@@ -43,12 +43,12 @@ if ( class_exists( 'Azl_Schema' ) && method_exists( 'Azl_Schema', 'uninstall' ) 
 if ( class_exists( 'Azl_Caps' ) && method_exists( 'Azl_Caps', 'uninstall' ) ) {
 	Azl_Caps::uninstall();
 } else {
-	foreach ( array( 'azl_manager', 'azl_supervisor', 'azl_device' ) as $azl_role ) {
+	foreach ( array( 'azl_owner', 'azl_manager', 'azl_supervisor', 'azl_device' ) as $azl_role ) {
 		remove_role( $azl_role );
 	}
 	$azl_admin = get_role( 'administrator' );
 	if ( $azl_admin ) {
-		foreach ( array( 'azl_use_desk', 'azl_manage_staff', 'azl_manage_settings' ) as $azl_cap ) {
+		foreach ( array( 'azl_use_desk', 'azl_act_directly', 'azl_manage_staff', 'azl_manage_settings', 'azl_manage_accounts' ) as $azl_cap ) {
 			$azl_admin->remove_cap( $azl_cap );
 		}
 	}

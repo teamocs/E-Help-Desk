@@ -29,7 +29,6 @@ function ItemCard({ it }: { it: Item }) {
   const items = useApp((s) => s.items);
   const now = useApp((s) => s.now);
   const staff = useApp((s) => s.staff);
-  const hideTimers = useApp((s) => s.prefs.shadow && ['manager', 'owner'].includes(s.staff.find((p) => p.id === s.me)?.role ?? ''));
   const [mode, setMode] = useState<null | 'hold' | 'transfer'>(null);
   const view = sla(it, items, now);
   const blocked = isBlocked(it, items);
@@ -39,7 +38,7 @@ function ItemCard({ it }: { it: Item }) {
   const open = isOpen(it);
 
   return (
-    <Group title={undefined}>
+    <Group>
       <div className="row" style={{ alignItems: 'flex-start' }}>
         <div className="grow">
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -54,7 +53,7 @@ function ItemCard({ it }: { it: Item }) {
           {blocked && pre && <p className="t-foot" style={{ margin: '4px 0 0', color: 'var(--warn)' }}>Waiting for “{pre.name}”. No clock runs until that is done.</p>}
           {it.status === 'escalated' && <p className="t-foot c2" style={{ margin: '4px 0 0' }}>Tracked as a work order. Completing it closes this item.</p>}
         </div>
-        {open && !hideTimers && view.phase !== 'waiting' && view.phase !== 'held' ? (
+        {open && view.phase !== 'waiting' && view.phase !== 'held' ? (
           <Ring ratio={view.ratio} tone={toneOf(view.ratio)} size={44}>
             <span className="t-cap">{ago(view.phase === 'ack' ? now - it.createdAt : now - (it.ackAt ?? it.createdAt) - it.heldMs)}</span>
           </Ring>
@@ -128,7 +127,7 @@ export function RequestDetail({ id }: { id: string }) {
           <h2 className="t-title2">Room {req.room}</h2>
           <p className="t-sub c2" style={{ margin: 0 }}>{req.ticket} · logged {ago(now - req.createdAt)} ago · {req.source === 'guest' ? 'Guest request' : 'Staff request'}</p>
         </div>
-        {req.vip && <Pill tone="accent">VIP</Pill>}
+        {req.vip && <Pill tone="gold">VIP</Pill>}
       </div>
       {req.remarks && (
         <Group>

@@ -1,5 +1,4 @@
-import type { Command, CommandResult, Snapshot } from "../server/contract";
-import type { Outcome, StaffInput } from "../server/staff";
+import type { Command, CommandResult, Outcome, Snapshot, StaffInput } from "../domain/contract";
 import type { AzlConfig } from "./config";
 
 // The WordPress REST calls the desk makes (namespace azl-ehd/v1), over fetch with cookie auth and X-WP-Nonce.
@@ -11,7 +10,24 @@ import type { AzlConfig } from "./config";
 // - Any other refusal (200 { ok: false }, 400, 403, 404, 409, 422...): return { ok: false, error } with the server's
 //   message. remote.ts drops the command and shows the message. This includes 403 azl_needs_pin (no valid PIN token),
 //   as in the Next.js desk, which refused a device command without a PIN the same way.
-// - The PIN sign-in token (/pin/sign-in) goes out as X-Azl-Actor on every request.
+// - The PIN sign-in token (/pin/sign-in) goes out as X-Azl-Actor on every request. A command carries the token of
+//   whoever was acting when it was queued (stamp(), field _actor, stripped before sending), so a command that
+//   waited offline is not credited to the person signed in when it finally goes out.
+
+/** The field stamp() adds to a queued command: the acting PIN token then, or null when the account itself acted. */
+const ACTOR = "_actor";
+
+/** A WordPress login the hotel owner manages (people who sign in with their own email, not PIN staff). */
+export interface DeskAccount {
+  id: number;
+  name: string;
+  email: string;
+  role: "owner" | "manager" | "supervisor" | "device";
+  disabled: boolean;
+  /** The owner's own row. */
+  self?: boolean;
+}
+export type NewAccount = { name: string; email: string; role: "manager" | "supervisor" | "device" };
 
 export class AuthError extends Error {
   constructor() {
@@ -36,6 +52,14 @@ export interface WpApi {
   addStaff(input: StaffInput, pin: string): Promise<Outcome<{ id: string }>>;
   setPin(staffId: string, pin: string): Promise<Outcome>;
   removeStaff(staffId: string): Promise<Outcome>;
+  /** Records who is acting on a command as it is queued (see ACTOR). */
+  stamp(cmd: Command): Command;
+  /** Ends the WordPress session (POST /auth/logout). The caller then goes to the sign-in page. */
+  logout(): Promise<Outcome>;
+  accounts(): Promise<Outcome<{ accounts: DeskAccount[] }>>;
+  /** Creates a login; the server emails the person a link to set their password. */
+  addAccount(input: NewAccount): Promise<Outcome>;
+  setAccountDisabled(id: number, disabled: boolean): Promise<Outcome>;
   /** The nonce now in use (WordPress may send a fresh one in the X-WP-Nonce response header). */
   readonly nonce: string;
 }
@@ -133,10 +157,10 @@ export function createWpApi(cfg: Pick<AzlConfig, "restUrl" | "nonce">, deps: Api
   };
 
   /** One request. Throws only when the server could not be reached. */
-  async function call(method: string, path: string, body?: unknown, extra?: { query?: Record<string, string>; headers?: Record<string, string> }): Promise<Reply> {
+  async function call(method: string, path: string, body?: unknown, extra?: { query?: Record<string, string>; headers?: Record<string, string>; actor?: string | null }): Promise<Reply> {
     const headers: Record<string, string> = { Accept: "application/json", "X-WP-Nonce": nonce, ...extra?.headers };
-    const acting = actor.get();
-    if (acting) headers["X-Azl-Actor"] = acting.token;
+    const token = extra && "actor" in extra ? extra.actor : actor.get()?.token;
+    if (token) headers["X-Azl-Actor"] = token;
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const res = await doFetch(routeUrl(cfg.restUrl, path, extra?.query), {
       method,
@@ -184,12 +208,20 @@ export function createWpApi(cfg: Pick<AzlConfig, "restUrl" | "nonce">, deps: Api
       return { snapshot: snapshot as unknown as Snapshot, actor: typeof named === "string" ? named : (actor.get()?.staffId ?? null) };
     },
 
+    stamp(cmd) {
+      return { ...cmd, [ACTOR]: actor.get()?.token ?? null } as unknown as Command;
+    },
+
     async command(cmd) {
-      const r = await call("POST", "/command", cmd);
+      // A stamped command goes out as the person who made it; an unstamped one (queued by an older version) as now.
+      const { [ACTOR]: stamped, ...body } = cmd as Command & { [ACTOR]?: string | null };
+      const r = await call("POST", "/command", body, ACTOR in cmd ? { actor: stamped ?? null } : undefined);
       if (sessionEnded(r)) throw lost();
       if (retryable(r.status)) throw new Error(`Server error ${r.status}`);
-      // No valid PIN token (expired, signed out elsewhere, or none on a shared phone): forget it so a reload asks for the PIN.
-      if (codeOf(r.data) === "azl_needs_pin") actor.set(null);
+      // No valid PIN token (expired, signed out elsewhere, or none on a shared phone): forget it so a reload asks for
+      // the PIN. Only when it is the token in use now: an old stamped token says nothing about who is acting now.
+      const current = actor.get();
+      if (codeOf(r.data) === "azl_needs_pin" && current && (!(ACTOR in cmd) || stamped === current.token)) actor.set(null);
       if (r.status < 200 || r.status >= 300) return { ok: false, error: messageOf(r.data) };
       if (isObj(r.data) && r.data.ok === false) return { ok: false, error: messageOf(r.data) };
       const d = isObj(r.data) ? r.data : {};
@@ -225,5 +257,37 @@ export function createWpApi(cfg: Pick<AzlConfig, "restUrl" | "nonce">, deps: Api
       outcome("POST", "/staff", { name: input.name, title: input.title, role: input.role, dept: input.dept, pin }, (d) => ({ id: String(d.id ?? "") })),
     setPin: (staffId, pin) => outcome("PATCH", `/staff/${encodeURIComponent(staffId)}`, { pin }, () => ({})),
     removeStaff: (staffId) => outcome("PATCH", `/staff/${encodeURIComponent(staffId)}`, { active: false }, () => ({})),
+
+    async logout() {
+      const r = await outcome("POST", "/auth/logout", {}, () => ({}));
+      actor.set(null);
+      return r;
+    },
+    async accounts() {
+      // The server answers { ok, accounts: [...] }; a bare array is accepted too.
+      let r: Reply;
+      try {
+        r = await call("GET", "/accounts");
+      } catch {
+        return { ok: false, error: OFFLINE };
+      }
+      if (sessionEnded(r)) {
+        lost();
+        return { ok: false, error: "Please sign in again." };
+      }
+      const list = Array.isArray(r.data) ? r.data : isObj(r.data) && Array.isArray(r.data.accounts) ? r.data.accounts : null;
+      if (r.status < 200 || r.status >= 300 || !list) return { ok: false, error: retryable(r.status) ? OFFLINE : messageOf(r.data) };
+      const accounts = list.filter(isObj).map((a) => ({
+        id: Number(a.id),
+        name: String(a.name ?? ""),
+        email: String(a.email ?? ""),
+        role: (["owner", "manager", "supervisor", "device"].includes(String(a.role)) ? a.role : "device") as DeskAccount["role"],
+        disabled: a.disabled === true,
+        ...(a.self === true ? { self: true } : {}),
+      }));
+      return { ok: true, accounts };
+    },
+    addAccount: (input) => outcome("POST", "/accounts", { name: input.name.trim(), email: input.email.trim(), role: input.role }, () => ({})),
+    setAccountDisabled: (id, disabled) => outcome("PATCH", `/accounts/${encodeURIComponent(String(id))}`, { disabled }, () => ({})),
   };
 }

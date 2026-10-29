@@ -3,7 +3,7 @@ import { buildSeed } from './seed';
 import { BUNDLES, HAZARDS, PRESETS, STAFF, detectSafety, hubUp, isOpen, pad } from './rules';
 import { haptic, hapticsConfig, tone } from '../lib/haptics';
 import type { Hazard, HoldReason, Item, Incident, Prefs, State, Toast, WorkOrder } from './types';
-import type { Snapshot } from '../server/contract';
+import type { Snapshot } from './contract';
 import { remote, type Draft } from './remote';
 
 /* ---------- tiny observable store (SwiftUI @Observable in spirit) ---------- */
@@ -29,7 +29,7 @@ let counter = 0;
 const uid = (p: string) => `${p}${Date.now().toString(36)}${(++counter).toString(36)}`;
 /** Domain ids. Server-backed mode needs real uuids so the optimistic row is the stored row. */
 const nid = (p: string) => (remote.active ? crypto.randomUUID() : uid(p));
-/** Report a change that already happened locally to the server. No-op in demo mode. */
+/** Report a change that already happened locally to the server. No-op until the desk is connected. */
 const send = (d: Draft) => remote.send(d);
 
 export function initialState(now = Date.now()): State {
@@ -48,10 +48,9 @@ export function initialState(now = Date.now()): State {
     ops: [],
     pending: [],
     reconciling: false,
-    stationB: { requests: seed.requests.length, open: Object.values(seed.items).filter(isOpen).length, lastSync: now },
-    netlog: [{ at: now, text: 'Edge node online. 6 devices registered.' }],
+    netlog: [],
     handover: {},
-    prefs: { textScale: 1, contrast: false, motion: 'auto', haptics: true, sound: true, showHaptics: true, shadow: true, theme: 'auto', shortcuts: true },
+    prefs: { textScale: 1, contrast: false, motion: 'auto', haptics: true, sound: true, shortcuts: true },
     toasts: [],
     announce: '',
   };
@@ -68,35 +67,41 @@ export function resetApp(now = Date.now()) {
 }
 
 /* ---------- ui state ---------- */
-export type Tab = 'requests' | 'maintenance' | 'housekeeping' | 'handover' | 'insights' | 'network' | 'settings';
-export type Sheet = null | 'composer' | 'safety' | 'paper' | 'more' | 'demo' | 'switch' | 'incident';
+export type Tab = 'requests' | 'maintenance' | 'housekeeping' | 'handover' | 'insights' | 'settings';
+export type Sheet = null | 'composer' | 'safety' | 'paper' | 'more' | 'incident';
+export type AccountRole = 'owner' | 'manager' | 'supervisor' | 'device';
+/** The WordPress account this desk is signed in with, and the hotel it belongs to. */
+export interface Account {
+  name: string;
+  role: AccountRole;
+  hotel: string;
+  logoUrl: string;
+}
 export interface UI {
-  screen: 'cover' | 'lock' | 'app';
+  screen: 'lock' | 'app';
   tab: Tab;
   selItem?: string;
   selWo?: string;
   sheet: Sheet;
   composerSeed?: { room?: string; text?: string; preset?: string };
-  composerOpenedAt?: number;
-  guide: boolean;
-  step: number;
-  doneSteps: number[];
-  running: boolean;
   focusSafetyId?: string;
-  /** Server-backed app: the demo-only screens and the guide are hidden. */
+  /** True once the desk is wired to the server and the first snapshot arrived. */
   remote: boolean;
-  /** Server-backed app: changes saved on this device that the server has not accepted yet. */
+  /** Changes saved on this device that the server has not accepted yet. */
   sync: { pending: number; offline: boolean };
-  /** Server-backed app on a shared phone's account: no manager mode, so staff must sign in with a PIN. */
+  /** The last poll for changes failed. */
+  pollDown: boolean;
+  /** A shared phone's account: no manager mode, so staff must sign in with a PIN. */
   deviceOnly: boolean;
+  account: Account;
 }
-export const ui = createStore<UI>({ screen: 'cover', tab: 'requests', sheet: null, guide: false, step: 0, doneSteps: [], running: false, remote: false, sync: { pending: 0, offline: false }, deviceOnly: false });
+export const ui = createStore<UI>({ screen: 'lock', tab: 'requests', sheet: null, remote: false, sync: { pending: 0, offline: false }, pollDown: false, deviceOnly: false, account: { name: '', role: 'device', hotel: '', logoUrl: '' } });
 export function useUI<T>(sel: (s: UI) => T): T {
   return useSyncExternalStore(ui.sub, () => sel(ui.get()));
 }
 export const setUI = (p: Partial<UI>) => ui.set((s) => ({ ...s, ...p }));
 export const go = (tab: Tab) => setUI({ tab, selItem: undefined, selWo: undefined, sheet: null });
-export const openComposer = (seed?: UI['composerSeed']) => setUI({ sheet: 'composer', composerSeed: seed, composerOpenedAt: Date.now() });
+export const openComposer = (seed?: UI['composerSeed']) => setUI({ sheet: 'composer', composerSeed: seed });
 
 /* ---------- helpers ---------- */
 const meName = (s: State) => s.staff.find((p) => p.id === s.me)?.name ?? 'System';
@@ -117,19 +122,7 @@ export function setPref<K extends keyof Prefs>(k: K, v: Prefs[K]) {
   syncPrefs(app.get().prefs);
 }
 
-/* ---------- sync simulation ---------- */
-let bTimer: ReturnType<typeof setTimeout> | undefined;
-function scheduleB() {
-  clearTimeout(bTimer);
-  bTimer = setTimeout(() => {
-    app.set((s) =>
-      hubUp(s.net, false)
-        ? { ...s, stationB: { requests: s.requests.length, open: Object.values(s.items).filter(isOpen).length, lastSync: Date.now() } }
-        : s,
-    );
-  }, 450);
-}
-
+/* ---------- local change log (the offline queue indicator for rows) ---------- */
 function commit(label: string, fn: (s: State) => State, refs: string[] = []) {
   const reach = hubUp(app.get().net);
   app.set((s) => {
@@ -141,7 +134,6 @@ function commit(label: string, fn: (s: State) => State, refs: string[] = []) {
       pending: reach ? n.pending : Array.from(new Set([...n.pending, ...refs])),
     };
   });
-  if (reach) scheduleB();
 }
 
 export function reconcile() {
@@ -153,7 +145,6 @@ export function reconcile() {
       reconciling: false,
       ops: s.ops.map((o) => ({ ...o, synced: true })),
       pending: [],
-      stationB: { requests: s.requests.length, open: Object.values(s.items).filter(isOpen).length, lastSync: Date.now() },
       netlog: [{ at: Date.now(), text: `Reconciled ${n} queued change${n === 1 ? '' : 's'}. No conflicts.` }, ...s.netlog].slice(0, 40),
     }));
     if (n > 0) {
@@ -453,7 +444,7 @@ export function cleanSet(id: string, status: State['cleaning'][number]['status']
 }
 
 /* ---------- handover ---------- */
-/** The server names a sign-off by the owner or manager account this way (MANAGER_SIGNER in server/snapshot.ts). */
+/** The server names a sign-off by the owner or manager account this way. */
 const signer = (s: State) => (remote.active && s.me === 'member' ? 'a manager' : meName(s));
 export function ackHandover() {
   const handoverId = nid('h');

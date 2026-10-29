@@ -118,9 +118,6 @@ export interface Prefs {
   motion: 'auto' | 'reduce';
   haptics: boolean;
   sound: boolean;
-  showHaptics: boolean;
-  shadow: boolean;
-  theme: 'auto' | 'light' | 'dark';
   shortcuts: boolean;
 }
 
@@ -150,7 +147,6 @@ export interface State {
   ops: Op[];
   pending: string[];
   reconciling: boolean;
-  stationB: { requests: number; open: number; lastSync: number };
   netlog: { at: number; text: string }[];
   handover: Handover;
   prefs: Prefs;

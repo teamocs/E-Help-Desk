@@ -26,7 +26,8 @@ final class Azl_Admin {
 	 */
 	public static function defaults() {
 		return array(
-			'property_name'       => (string) get_bloginfo( 'name' ),
+			'property_name'       => wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES ),
+			'property_key'        => '',
 			'rooms'               => array(),
 			'poll_seconds'        => 5,
 			'delete_on_uninstall' => false,
@@ -104,6 +105,7 @@ final class Azl_Admin {
 		);
 		add_settings_section( 'azl_main', __( 'This property', 'azl-ehd' ), '__return_false', self::SLUG );
 		add_settings_field( 'azl_property_name', __( 'Property name', 'azl-ehd' ), array( __CLASS__, 'field_name' ), self::SLUG, 'azl_main', array( 'label_for' => 'azl_property_name' ) );
+		add_settings_field( 'azl_property_key', __( 'Look', 'azl-ehd' ), array( __CLASS__, 'field_key' ), self::SLUG, 'azl_main', array( 'label_for' => 'azl_property_key' ) );
 		add_settings_field( 'azl_rooms', __( 'Rooms', 'azl-ehd' ), array( __CLASS__, 'field_rooms' ), self::SLUG, 'azl_main', array( 'label_for' => 'azl_rooms' ) );
 		add_settings_field( 'azl_poll', __( 'Refresh every', 'azl-ehd' ), array( __CLASS__, 'field_poll' ), self::SLUG, 'azl_main', array( 'label_for' => 'azl_poll' ) );
 		add_settings_section( 'azl_data', __( 'Data', 'azl-ehd' ), '__return_false', self::SLUG );
@@ -129,6 +131,7 @@ final class Azl_Admin {
 		$name = sanitize_text_field( (string) ( $input['property_name'] ?? '' ) );
 		return array(
 			'property_name'       => '' === $name ? self::defaults()['property_name'] : mb_substr( $name, 0, 80 ),
+			'property_key'        => in_array( $input['property_key'] ?? '', array( 'baguio', 'boracay' ), true ) ? $input['property_key'] : '',
 			'rooms'               => array_slice( $rooms, 0, 2000 ),
 			'poll_seconds'        => max( 5, min( 30, absint( $input['poll_seconds'] ?? 5 ) ) ),
 			'delete_on_uninstall' => ! empty( $input['delete_on_uninstall'] ),
@@ -144,6 +147,22 @@ final class Azl_Admin {
 			esc_attr( $s['property_name'] )
 		);
 		echo '<p class="description">' . esc_html__( 'Shown on the desk, e.g. "Azalea Baguio".', 'azl-ehd' ) . '</p>';
+	}
+
+	/** Which hotel's design the desk and sign-in pages use. */
+	public static function field_key() {
+		$s       = self::settings();
+		$choices = array(
+			''        => __( 'Detect from the site address', 'azl-ehd' ),
+			'baguio'  => __( 'Azalea Baguio', 'azl-ehd' ),
+			'boracay' => __( 'Azalea Boracay', 'azl-ehd' ),
+		);
+		printf( '<select id="azl_property_key" name="%s[property_key]">', esc_attr( self::OPTION ) );
+		foreach ( $choices as $value => $label ) {
+			printf( '<option value="%1$s" %2$s>%3$s</option>', esc_attr( $value ), selected( $s['property_key'], $value, false ), esc_html( $label ) );
+		}
+		echo '</select>';
+		echo '<p class="description">' . esc_html__( 'Colours, fonts and logo of the desk and its sign-in page. Detection looks for "baguio" or "boracay" in the site address; Baguio is the default.', 'azl-ehd' ) . '</p>';
 	}
 
 	/** Rooms list field, one per line. */

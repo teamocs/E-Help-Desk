@@ -16,24 +16,291 @@ set_error_handler(
 	}
 );
 
+define( 'DAY_IN_SECONDS', 86400 );
+define( 'HOUR_IN_SECONDS', 3600 );
+define( 'AZL_TEST_HOME', 'https://azaleabaguio.test/staging2-baguio' );
+
 require __DIR__ . '/Wpdb_Sqlite.php';
-foreach ( array( 'Db', 'Rules', 'Schema', 'Pin', 'Staff', 'Caps', 'Commands', 'Snapshot', 'Rest' ) as $azl_class ) {
-	require __DIR__ . '/../includes/' . $azl_class . '.php';
-}
 
 /* ---------- WordPress stand-ins ---------- */
 
-$GLOBALS['azl_wp'] = array();
+$GLOBALS['azl_wp']    = array();
+$GLOBALS['azl_hooks'] = array(); // hook => [callable, ...]; kept across tests (the plugin hooks in once, at load)
 
 function azl_wp_reset(): void {
 	$GLOBALS['azl_wp'] = array(
-		'options' => array(),
-		'meta'    => array(),
-		'user'    => 0,
-		'caps'    => array(), // user id => [cap => true]
-		'roles'   => array(),
-		'routes'  => array(),
+		'options'    => array( 'permalink_structure' => '/%postname%/' ),
+		'meta'       => array(),
+		'user'       => 0,
+		'caps'       => array(), // user id => [cap => true]
+		'roles'      => array(),
+		'routes'     => array(),
+		'users'      => array(), // id => ['user' => WP_User, 'pass' => string, 'key' => [key, time]|null]
+		'transients' => array(),
+		'mails'      => array(),
+		'cookie'     => null,
+		'destroyed'  => array(),
+		'home'       => AZL_TEST_HOME,
+		'icon'       => 'https://azaleabaguio.test/staging2-baguio/wp-content/uploads/icon.png',
+		'logo_id'    => 0,
 	);
+	$_SERVER['REMOTE_ADDR']     = '203.0.113.7';
+	$_SERVER['HTTP_USER_AGENT'] = 'TestBrowser/1.0';
+	unset( $_SERVER['HTTP_X_FORWARDED_FOR'] );
+}
+
+/* hooks */
+function add_action( $hook, $cb, $prio = 10, $args = 1 ) {
+	$GLOBALS['azl_hooks'][ $hook ][] = $cb;
+	return true;
+}
+function add_filter( $hook, $cb, $prio = 10, $args = 1 ) {
+	return add_action( $hook, $cb, $prio, $args );
+}
+function apply_filters( $hook, $value, ...$args ) {
+	foreach ( $GLOBALS['azl_hooks'][ $hook ] ?? array() as $cb ) {
+		$value = $cb( $value, ...$args );
+	}
+	return $value;
+}
+function do_action( $hook, ...$args ) {
+	$GLOBALS['azl_wp']['actions'][] = $hook;
+}
+function register_activation_hook( $file, $cb ) {}
+function register_deactivation_hook( $file, $cb ) {}
+function plugin_dir_path( $file ) {
+	return rtrim( dirname( $file ), '/\\' ) . '/';
+}
+function plugin_basename( $file ) {
+	return 'azalea-ehelpdesk/' . basename( $file );
+}
+function plugins_url( $path = '', $file = '' ) {
+	return 'https://azaleabaguio.test/staging2-baguio/wp-content/plugins/azalea-ehelpdesk/' . ltrim( $path, '/' );
+}
+
+/* urls and escaping */
+function home_url( $path = '' ) {
+	return $GLOBALS['azl_wp']['home'] . '/' . ltrim( (string) $path, '/' );
+}
+function rest_url( $path = '' ) {
+	return home_url( '/wp-json/' . ltrim( $path, '/' ) );
+}
+function wp_parse_url( $url, $component = -1 ) {
+	return parse_url( $url, $component );
+}
+function add_query_arg( ...$a ) {
+	if ( is_array( $a[0] ) ) {
+		list( $args, $url ) = array( $a[0], $a[1] );
+	} else {
+		list( $args, $url ) = array( array( $a[0] => $a[1] ), $a[2] );
+	}
+	foreach ( $args as $k => $v ) {
+		$url .= ( false === strpos( $url, '?' ) ? '?' : '&' ) . $k . '=' . $v;
+	}
+	return $url;
+}
+function wp_logout_url( $redirect = '' ) {
+	return home_url( '/wp-login.php?action=logout' );
+}
+function esc_url( $u ) {
+	return htmlspecialchars( (string) $u, ENT_QUOTES );
+}
+function esc_url_raw( $u ) {
+	return (string) $u;
+}
+function esc_html( $s ) {
+	return htmlspecialchars( (string) $s, ENT_QUOTES );
+}
+function esc_attr( $s ) {
+	return htmlspecialchars( (string) $s, ENT_QUOTES );
+}
+function __( $s, $d = '' ) {
+	return $s;
+}
+function esc_html__( $s, $d = '' ) {
+	return esc_html( $s );
+}
+function esc_html_e( $s, $d = '' ) {
+	echo esc_html( $s );
+}
+function language_attributes() {
+	echo 'lang="en-US"';
+}
+function is_ssl() {
+	return true;
+}
+function wp_doing_ajax() {
+	return false;
+}
+function wp_unslash( $v ) {
+	return $v;
+}
+function is_email( $e ) {
+	return false !== filter_var( $e, FILTER_VALIDATE_EMAIL ) ? $e : false;
+}
+function sanitize_email( $e ) {
+	return preg_replace( '/[^a-z0-9+_.@-]/i', '', (string) $e );
+}
+function get_site_icon_url( $size = 512 ) {
+	return $GLOBALS['azl_wp']['icon'];
+}
+function get_theme_mod( $name, $default = false ) {
+	return 'custom_logo' === $name ? $GLOBALS['azl_wp']['logo_id'] : $default;
+}
+function wp_get_attachment_image_url( $id, $size = 'thumbnail' ) {
+	return $id ? AZL_TEST_HOME . '/wp-content/uploads/logo-' . $id . '.png' : false;
+}
+function wp_get_upload_dir() {
+	return array( 'baseurl' => $GLOBALS['azl_wp']['uploads'] ?? AZL_TEST_HOME . '/wp-content/uploads' );
+}
+
+/* transients, on the test clock */
+function get_transient( $key ) {
+	$t = $GLOBALS['azl_wp']['transients'][ $key ] ?? null;
+	return null !== $t && $t[1] > Azl_Db::now() ? $t[0] : false;
+}
+function set_transient( $key, $value, $ttl = 0 ) {
+	$GLOBALS['azl_wp']['transients'][ $key ] = array( $value, Azl_Db::now() + 1000 * $ttl );
+	return true;
+}
+function delete_transient( $key ) {
+	unset( $GLOBALS['azl_wp']['transients'][ $key ] );
+	return true;
+}
+
+/* users, sign-in and mail */
+class WP_User {
+	public $ID           = 0;
+	public $user_login   = '';
+	public $user_email   = '';
+	public $display_name = '';
+	public $roles        = array();
+}
+class WP_Error {
+	public $code;
+	public function __construct( $code = '', $message = '' ) {
+		$this->code = $code;
+	}
+}
+function is_wp_error( $x ) {
+	return $x instanceof WP_Error;
+}
+final class WP_Session_Tokens {
+	private $id;
+	public static function get_instance( $id ) {
+		$t     = new self();
+		$t->id = $id;
+		return $t;
+	}
+	public function destroy_all() {
+		$GLOBALS['azl_wp']['destroyed'][] = $this->id;
+	}
+}
+
+/** Adds a user whose capabilities come from its roles (administrators also get manage_options). */
+function azl_add_user( int $id, string $email, array $roles, string $pass = 'correct horse 1' ): WP_User {
+	$u               = new WP_User();
+	$u->ID           = $id;
+	$u->user_login   = $email;
+	$u->user_email   = $email;
+	$u->display_name = 'User ' . $id;
+	$u->roles        = $roles;
+	$caps            = array();
+	foreach ( $roles as $r ) {
+		$caps += array_filter( (array) ( $GLOBALS['azl_wp']['roles'][ $r ]->capabilities ?? array() ) );
+		if ( 'administrator' === $r ) {
+			$caps['manage_options'] = true;
+		}
+	}
+	$GLOBALS['azl_wp']['caps'][ $id ]  = $caps;
+	$GLOBALS['azl_wp']['users'][ $id ] = array( 'user' => $u, 'pass' => $pass, 'key' => null );
+	return $u;
+}
+function get_user_by( $field, $value ) {
+	foreach ( $GLOBALS['azl_wp']['users'] as $row ) {
+		$have = 'email' === $field ? $row['user']->user_email : ( 'login' === $field ? $row['user']->user_login : $row['user']->ID );
+		if ( 0 === strcasecmp( (string) $have, (string) $value ) ) {
+			return $row['user'];
+		}
+	}
+	return false;
+}
+function email_exists( $e ) {
+	$u = get_user_by( 'email', $e );
+	return $u ? $u->ID : false;
+}
+function username_exists( $l ) {
+	$u = get_user_by( 'login', $l );
+	return $u ? $u->ID : false;
+}
+function get_users( $args = array() ) {
+	$out = array();
+	foreach ( $GLOBALS['azl_wp']['users'] as $row ) {
+		if ( array_intersect( $row['user']->roles, $args['role__in'] ?? array() ) ) {
+			$out[] = $row['user'];
+		}
+	}
+	return $out;
+}
+function wp_authenticate( $login, $pass ) {
+	$u = get_user_by( 'login', $login );
+	$u = $u ? $u : get_user_by( 'email', $login );
+	if ( $u ) {
+		$result = hash_equals( $GLOBALS['azl_wp']['users'][ $u->ID ]['pass'], (string) $pass ) ? $u : new WP_Error( 'incorrect_password' );
+	} else {
+		$result = new WP_Error( 'invalid_username' );
+	}
+	return apply_filters( 'authenticate', $result, $login, $pass );
+}
+function wp_set_auth_cookie( $id, $remember = false, $secure = '' ) {
+	$GLOBALS['azl_wp']['cookie'] = array( $id, $remember, $secure );
+}
+function wp_logout() {
+	$GLOBALS['azl_wp']['logged_out'] = $GLOBALS['azl_wp']['user'];
+	$GLOBALS['azl_wp']['user']       = 0;
+}
+function is_user_logged_in() {
+	return $GLOBALS['azl_wp']['user'] > 0;
+}
+function wp_get_current_user() {
+	return $GLOBALS['azl_wp']['users'][ $GLOBALS['azl_wp']['user'] ]['user'] ?? new WP_User();
+}
+function wp_generate_password( $len = 12, $special = true, $extra = false ) {
+	return substr( bin2hex( random_bytes( $len ) ), 0, $len );
+}
+function get_password_reset_key( $user ) {
+	$key = substr( preg_replace( '/[^A-Za-z0-9]/', '', base64_encode( random_bytes( 30 ) ) ), 0, 20 );
+	$GLOBALS['azl_wp']['users'][ $user->ID ]['key'] = array( $key, Azl_Db::now() );
+	return $key;
+}
+function check_password_reset_key( $key, $login ) {
+	$u = get_user_by( 'login', $login );
+	$k = $u ? $GLOBALS['azl_wp']['users'][ $u->ID ]['key'] : null;
+	if ( ! $k || ! hash_equals( $k[0], (string) $key ) || Azl_Db::now() - $k[1] > DAY_IN_SECONDS * 1000 ) {
+		return new WP_Error( 'invalid_key' );
+	}
+	return $u;
+}
+function reset_password( $user, $pass ) {
+	$GLOBALS['azl_wp']['users'][ $user->ID ]['pass'] = $pass;
+	$GLOBALS['azl_wp']['users'][ $user->ID ]['key']  = null;
+}
+function wp_insert_user( $data ) {
+	if ( username_exists( $data['user_login'] ) ) {
+		return new WP_Error( 'existing_user_login' );
+	}
+	$id                  = 1 + max( array_merge( array( 100 ), array_keys( $GLOBALS['azl_wp']['users'] ) ) );
+	$u                   = azl_add_user( $id, $data['user_email'], array( $data['role'] ), $data['user_pass'] );
+	$u->display_name     = $data['display_name'];
+	return $id;
+}
+function wp_mail( $to, $subject, $body ) {
+	$GLOBALS['azl_wp']['mails'][] = compact( 'to', 'subject', 'body' );
+	return true;
+}
+function delete_user_meta( $id, $key ) {
+	unset( $GLOBALS['azl_wp']['meta'][ $id ][ $key ] );
+	return true;
 }
 
 function get_option( $key, $default = false ) {
@@ -75,13 +342,17 @@ function sanitize_textarea_field( $s ) {
 function get_current_user_id() {
 	return $GLOBALS['azl_wp']['user'];
 }
-function user_can( $user_id, $cap ) {
-	return ! empty( $GLOBALS['azl_wp']['caps'][ (int) $user_id ][ $cap ] );
+function user_can( $user, $cap ) {
+	$id = is_object( $user ) ? (int) $user->ID : (int) $user;
+	return ! empty( $GLOBALS['azl_wp']['caps'][ $id ][ $cap ] );
 }
 function current_user_can( $cap ) {
 	return user_can( get_current_user_id(), $cap );
 }
 function get_userdata( $id ) {
+	if ( isset( $GLOBALS['azl_wp']['users'][ $id ] ) ) {
+		return $GLOBALS['azl_wp']['users'][ $id ]['user'];
+	}
 	return isset( $GLOBALS['azl_wp']['caps'][ $id ] ) ? (object) array( 'ID' => $id ) : false;
 }
 function get_user_meta( $id, $key, $single = false ) {
@@ -101,8 +372,8 @@ final class Azl_Test_Role {
 	public function __construct( array $caps ) {
 		$this->capabilities = $caps;
 	}
-	public function add_cap( $cap ) {
-		$this->capabilities[ $cap ] = true;
+	public function add_cap( $cap, $grant = true ) {
+		$this->capabilities[ $cap ] = $grant;
 	}
 	public function remove_cap( $cap ) {
 		unset( $this->capabilities[ $cap ] );
@@ -186,6 +457,15 @@ class WP_REST_Response {
 	public function get_headers() {
 		return $this->headers;
 	}
+}
+
+/* ---------- the plugin itself (its main file loads every includes/*.php and adds its hooks) ---------- */
+
+azl_wp_reset();
+require __DIR__ . '/../azalea-ehelpdesk.php';
+if ( ! empty( $GLOBALS['azl_ehd_load_errors'] ) ) {
+	fwrite( STDERR, "Plugin files failed to load:\n  " . implode( "\n  ", $GLOBALS['azl_ehd_load_errors'] ) . "\n" );
+	exit( 1 );
 }
 
 /* ---------- per-test reset ---------- */

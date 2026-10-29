@@ -46,9 +46,9 @@ test(
 		Azl_Caps::install();
 		Azl_Caps::install();
 		$r = $GLOBALS['azl_wp']['roles'];
-		eq( array( 'read' => true, 'azl_use_desk' => true ), $r['azl_device']->capabilities );
-		eq( array( 'read' => true, 'azl_use_desk' => true, 'azl_act_directly' => true ), $r['azl_supervisor']->capabilities );
-		ok( ! empty( $r['azl_manager']->capabilities['azl_manage_staff'] ) && ! empty( $r['azl_manager']->capabilities['azl_manage_settings'] ), 'manager' );
+		eq( array( 'read' => false, 'azl_use_desk' => true ), $r['azl_device']->capabilities );
+		eq( array( 'read' => false, 'azl_use_desk' => true, 'azl_act_directly' => true ), $r['azl_supervisor']->capabilities );
+		ok( ! empty( $r['azl_manager']->capabilities['azl_manage_staff'] ) && empty( $r['azl_manager']->capabilities['azl_manage_settings'] ), 'manager: staff yes, settings (wp-admin) no' );
 		foreach ( Azl_Caps::all() as $cap ) {
 			ok( ! empty( $r['administrator']->capabilities[ $cap ] ), "administrator has $cap" );
 		}
@@ -75,7 +75,7 @@ test(
 		sign_in_as( DEVICE );
 		ok( Azl_Rest::can_use_desk() && ! Azl_Rest::can_manage_staff() && ! Azl_Rest::can_manage_settings(), 'device' );
 		sign_in_as( MANAGER );
-		ok( Azl_Rest::can_manage_staff() && Azl_Rest::can_manage_settings(), 'manager' );
+		ok( Azl_Rest::can_manage_staff() && ! Azl_Rest::can_manage_settings(), 'manager' );
 	}
 );
 

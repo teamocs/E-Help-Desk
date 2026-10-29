@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { ago, DEPTS, peso } from '../domain/rules';
-import { assessWo, completeWo, holdWo, reopenWo, setUI, startWo, useApp, useUI } from '../domain/store';
+import { assessWo, completeWo, go, holdWo, reopenWo, setUI, startWo, useApp, useUI } from '../domain/store';
 import type { WoStatus } from '../domain/types';
-import { Button, DeptChip, Group, Icon, NetPill, Pill, Row, Screen, Segmented, useTier } from '../ui/kit';
+import { Button, DeptChip, Empty, Group, Icon, Pill, Row, Screen, Segmented } from '../ui/kit';
 
 const ORDER: WoStatus[] = ['reported', 'assessed', 'in_progress', 'on_hold', 'done'];
 const LABEL: Record<WoStatus, string> = { reported: 'Reported', assessed: 'Assessed', in_progress: 'In progress', on_hold: 'On hold', done: 'Done' };
@@ -11,10 +11,12 @@ const FINDINGS = ['Worn part, replace', 'Leak at joint, reseal', 'Needs repainti
 export function Maintenance() {
   const wos = useApp((s) => s.wos);
   const sel = useUI((s) => s.selWo);
-  const tier = useTier();
   const open = wos.filter((w) => w.status !== 'done').length;
   return (
-    <Screen title="Work orders" subtitle={`${open} open · estimated vs actual cost tracked`} trailing={<NetPill />}>
+    <Screen title="Work orders" subtitle={wos.length ? `${open} open · estimated and actual cost tracked` : 'Repairs that need more than a quick fix'}>
+      {wos.length === 0 && (
+        <Empty icon="wrench" text="No work orders yet. They start from an on-site Engineering or IT item on a ticket: open it and choose Escalate." action="Go to requests" onAction={() => go('requests')} />
+      )}
       {ORDER.map((st) => {
         const ws = wos.filter((w) => w.status === st);
         if (!ws.length) return null;
@@ -36,7 +38,7 @@ export function Maintenance() {
           </Group>
         );
       })}
-      {tier === 'phone' && <p className="t-foot c2" style={{ padding: '12px 16px' }}>Tickets become work orders from the Escalate button on an on-site Engineering or IT item.</p>}
+      {wos.length > 0 && <p className="t-foot c2" style={{ padding: '12px 4px' }}>Tickets become work orders from the Escalate button on an on-site Engineering or IT item.</p>}
     </Screen>
   );
 }

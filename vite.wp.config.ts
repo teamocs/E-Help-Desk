@@ -10,7 +10,6 @@ export default defineConfig({
   base: "./",
   publicDir: false,
   plugins: [react()],
-  resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
   build: {
     outDir: "azalea-ehelpdesk/assets/desk",
@@ -18,8 +17,8 @@ export default defineConfig({
     manifest: "manifest.json",
     sourcemap: false,
     target: "es2020",
-    // The whole phosphor icon set comes in through src/ui/kit (icon names are looked up at runtime).
-    chunkSizeWarningLimit: 800,
+    // react-dom and motion are most of it; icons are pre-extracted to src/ui/icons.ts (npm run icons).
+    chunkSizeWarningLimit: 600,
     assetsDir: "",
     rolldownOptions: {
       input: fileURLToPath(new URL("./src/wp/main.tsx", import.meta.url)),

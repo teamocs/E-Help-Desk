@@ -1,3 +1,5 @@
+> History of the retired full-stack build (Next.js, Neon, Vercel). The project now ships as a WordPress plugin; see WORDPRESS-PLAN.md.
+
 # How we build it: orchestration plan
 
 **Status: DRAFT (AI-written, 2026-10-27).** Not a recorded decision until the owner approves it. Builds on `docs/PLAN.md`, which holds the stack and phase decisions. This file only says how the work is run.
