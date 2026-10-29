@@ -26,7 +26,7 @@ The full-stack build (Next.js, Neon Postgres, Neon Auth, Vercel) is dropped. The
 
 ## 2. The two target sites (read from the Novamira connectors, 2026-10-29)
 
-Both staging sites are reachable through Novamira (`azaleabaguio-staging2`, `azaleaboracay-staging2`). The live sites (`azaleabaguio.com`, `azaleaboracay.co`) are **not** touched until the owner approves.
+Both staging sites are reachable through Novamira (`azaleabaguio-staging2`, `azaleaboracay-staging2`). The live sites (`azaleabaguio.com`, `azaleaboracay.com`) are **not** touched until the owner approves.
 
 | Fact | Baguio staging | Boracay staging |
 |---|---|---|
@@ -40,6 +40,16 @@ Both staging sites are reachable through Novamira (`azaleabaguio-staging2`, `aza
 | Security | Wordfence installed, **inactive** | Wordfence **inactive**, WP Rocket **inactive** |
 | Data-modelling plugin (ACF, Pods, etc.) | none | none |
 | Connector user | WP user 1 | WP user 2 |
+
+
+**Where staging really lives (checked through the connectors).** The staging sites are folders inside the live domains, each with its own database and search-engine indexing off:
+
+| Site | Staging URL | Files | Database |
+|---|---|---|---|
+| Baguio | `https://azaleabaguio.com/staging2-baguio` | `/home/azalea9/public_html/azaleabaguio/staging2-baguio/` | `azalea9_wp53` |
+| Boracay | `https://azaleaboracay.com/staging2` | `/home/azalea9/public_html/staging2/` | `azalea9_wp768` |
+
+Because cPanel sets PHP **per domain**, changing PHP for `azaleabaguio.com` or `azaleaboracay.com` changes the live site and its staging folder together. The cPanel entries `staging.azaleabaguio.com` and `staging.azaleaboracay.com` are separate domains and do not affect these staging folders. To test a new PHP version on staging alone, point one of those staging subdomains at the staging folder (or accept a short, backed-up switch of the live domain with an instant rollback). The plugin's `/helpdesk/` URL on staging is therefore `.../staging2-baguio/helpdesk/` and `.../staging2/helpdesk/`.
 
 **Consequences for the design**
 - No ACF or similar owns data, so the plugin may register its own tables and types.
