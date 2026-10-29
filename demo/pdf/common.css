@@ -1,0 +1,17 @@
+@font-face { font-family: 'Amaranth'; font-weight: 400; font-style: normal; src: url('fonts/amaranth-400-latin.woff2') format('woff2'); }
+@font-face { font-family: 'Figtree'; font-weight: 300 900; font-style: normal; src: url('fonts/figtree-variable-latin.woff2') format('woff2'); }
+
+:root {
+  --deep: #142d1f; --forest: #345f45; --gold: #c0a14c; --teal: #177280;
+  --paper: #f6f2e9; --ink: #201e1d; --muted: #6d675f; --hair: #e2dac7; --brick: #8a3a31;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { margin: 0; font-family: 'Figtree', sans-serif; color: var(--ink); font-synthesis: none; font-variant-ligatures: common-ligatures; }
+h1, h2, h3, h4 { font-family: 'Amaranth', serif; font-weight: 400; color: var(--deep); margin: 0; }
+svg.yes { width: 3.6mm; height: 3.6mm; vertical-align: -0.6mm; fill: none; stroke: var(--forest); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.band { display: flex; height: 7mm; }
+.band i { flex: 7; background: var(--forest); }
+.band b { flex: 3; background: var(--teal); }
+.grule { width: 42mm; border-top: 0.6pt solid var(--gold); }
+code { font-family: Consolas, 'Courier New', monospace; font-size: 0.92em; background: var(--paper); padding: 0 0.5mm; border-radius: 1mm; }

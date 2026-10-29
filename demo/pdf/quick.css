@@ -1,0 +1,46 @@
+@page { size: A4; margin: 0; }
+html, body { width: 210mm; height: 297mm; overflow: hidden; }
+body { font-size: 8.6pt; line-height: 1.38; background: var(--paper); }
+.page { position: relative; width: 210mm; height: 297mm; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
+a { color: inherit; text-decoration: none; }
+p { margin: 0 0 1.6mm; }
+strong { font-weight: 650; }
+
+header { background: var(--deep); color: var(--paper); padding: 13mm 14mm 9mm; display: flex; justify-content: space-between; align-items: flex-end; gap: 10mm; }
+header .brand { font: 500 7pt 'Figtree'; letter-spacing: 0.26em; text-transform: uppercase; color: var(--gold); margin-bottom: 3mm; }
+header h1 { font-size: 27pt; line-height: 1.05; color: #fbf8f1; }
+header h1 span { display: block; font-size: 17pt; color: #d9e3da; margin-top: 1.5mm; }
+header .intro { width: 70mm; font-size: 8.4pt; line-height: 1.45; color: #c7d5ca; border-left: 0.6pt solid var(--gold); padding-left: 4mm; }
+header .intro p { margin: 0 0 1.6mm; }
+header .intro p:last-child { margin: 0; }
+header .intro strong { color: #fbf8f1; }
+
+main { flex: 1; display: flex; gap: 8mm; padding: 8mm 14mm 0; }
+.col { flex: 1; display: flex; flex-direction: column; gap: 4.5mm; }
+.card h2 { display: flex; align-items: center; gap: 2.4mm; font-size: 13.5pt; line-height: 1.2; margin-bottom: 2mm; padding-bottom: 1.6mm; border-bottom: 0.6pt solid var(--gold); }
+.card h2 .b { flex: none; width: 5.2mm; height: 5.2mm; border-radius: 50%; background: var(--forest); color: #fff; font: 600 8pt/5.2mm 'Figtree'; text-align: center; }
+.card ul, .card ol { margin: 0 0 1.8mm; padding: 0; list-style: none; }
+.card li { position: relative; padding-left: 4mm; margin: 0 0 1mm; }
+.card ul li::before { content: ''; position: absolute; left: 0.6mm; top: 0.62em; width: 1.3mm; height: 1.3mm; border-radius: 50%; background: var(--gold); }
+.card ol { counter-reset: s; }
+.card ol li { padding-left: 5mm; counter-increment: s; }
+.card ol li::before { content: counter(s); position: absolute; left: 0; top: 0; font-weight: 650; color: var(--forest); }
+.card.safe { background: #f8efec; border-left: 0.9mm solid var(--brick); border-radius: 2mm; padding: 3.4mm 4mm 2mm; }
+.card.safe h2 { border-bottom-color: var(--brick); }
+.card.safe h2 .b { background: var(--brick); }
+.card.safe strong:first-child { color: var(--brick); }
+.who { background: var(--paper); border-radius: 2mm; padding: 3.4mm 4mm 3mm; }
+.who h2 { font-size: 13.5pt; }
+table { width: 100%; border-collapse: collapse; font-size: 7.6pt; line-height: 1.3; }
+th { background: var(--forest); color: #fff; font-weight: 600; text-align: center; padding: 1.5mm 1mm; font-size: 7pt; }
+th:first-child { background: transparent; }
+td { padding: 1.4mm 1.2mm; border-top: 0.4pt solid #dcd3bd; text-align: center; vertical-align: middle; }
+td:first-child { text-align: left; font-weight: 500; }
+svg.yes { width: 3.2mm; height: 3.2mm; vertical-align: middle; }
+
+footer { margin: 5mm 14mm 6mm; background: var(--paper); border-radius: 2mm; border-left: 0.9mm solid var(--gold); padding: 3.4mm 5mm 2mm; }
+footer h2 { font-size: 13.5pt; margin-bottom: 1.6mm; }
+footer ul { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 8mm; }
+footer li { position: relative; padding-left: 4mm; margin: 0 0 1.4mm; break-inside: avoid; }
+footer li::before { content: ''; position: absolute; left: 0.6mm; top: 0.62em; width: 1.3mm; height: 1.3mm; border-radius: 50%; background: var(--gold); }
+.band { height: 6mm; flex: none; }
