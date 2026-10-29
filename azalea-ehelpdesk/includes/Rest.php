@@ -47,6 +47,12 @@ final class Azl_Rest {
 			'/staff/(?P<id>[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})',
 			array( 'methods' => 'PATCH', 'callback' => array( self::class, 'update_staff' ), 'permission_callback' => $staff )
 		);
+		register_rest_route( self::NS, '/catalog', array( 'methods' => 'GET', 'callback' => array( self::class, 'catalog' ), 'permission_callback' => $desk ) );
+		register_rest_route(
+			self::NS,
+			'/catalog/(?P<list>' . implode( '|', Azl_Catalog::LISTS ) . ')',
+			array( 'methods' => 'PUT', 'callback' => array( self::class, 'put_catalog' ), 'permission_callback' => array( self::class, 'can_manage_lists' ) )
+		);
 	}
 
 	/* ---------- permissions ---------- */
@@ -61,6 +67,10 @@ final class Azl_Rest {
 
 	public static function can_manage_settings(): bool {
 		return current_user_can( Azl_Caps::MANAGE_SETTINGS );
+	}
+
+	public static function can_manage_lists(): bool {
+		return current_user_can( Azl_Caps::MANAGE_LISTS );
 	}
 
 	/* ---------- routes ---------- */
@@ -161,6 +171,32 @@ final class Azl_Rest {
 				}
 				$allowed = array_flip( array( 'name', 'title', 'role', 'dept', 'onShift', 'active', 'pin', 'wpUserId' ) );
 				return self::reply( Azl_Staff::update( $request->get_param( 'id' ), array_intersect_key( $b, $allowed ) ) );
+			}
+		);
+	}
+
+	/** GET /catalog -> {ok:true, catalog, usage}: the lists and how many records use each department and hold reason. */
+	public static function catalog( $request ) {
+		return self::guard(
+			static function () {
+				return self::reply( array( 'ok' => true, 'catalog' => Azl_Catalog::get(), 'usage' => Azl_Catalog::usage() ) );
+			}
+		);
+	}
+
+	/**
+	 * PUT /catalog/<list> {items: [...], baseRev} replaces one list. 200 {ok, catalog, usage};
+	 * 400 azl_invalid {error, index?}; 409 azl_in_use {error, index?, key?}; 409 azl_stale {error, catalog, usage}.
+	 */
+	public static function put_catalog( $request ) {
+		return self::guard(
+			static function () use ( $request ) {
+				$b = self::body( $request );
+				if ( null === $b ) {
+					return self::reply( array( 'ok' => false, 'code' => 'azl_invalid', 'error' => 'Send the list as JSON.' ), 400 );
+				}
+				list( $status, $out ) = Azl_Catalog::save( (string) $request->get_param( 'list' ), $b['items'] ?? null, $b['baseRev'] ?? null );
+				return self::reply( $out, $status );
 			}
 		);
 	}

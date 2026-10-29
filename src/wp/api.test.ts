@@ -318,3 +318,49 @@ describe("with the offline outbox", () => {
     expect((commandCalls(f.calls)[0]!.body as Command).opId).toBe("op-a");
   });
 });
+
+describe("catalog", () => {
+  const cat = { catalogRev: 3, departments: [], requestTypes: [], bundles: [], holdReasons: [], jobTitles: [], woFindings: [] };
+
+  it("getCatalog reads the lists and usage", async () => {
+    const f = fakeFetch(() => json(200, { ok: true, catalog: cat, usage: { departments: { it: { people: 2 } }, holdReasons: [], openWorkOrders: 3 } }));
+    const r = await createWpApi(cfg, { fetch: f.fetch }).getCatalog();
+    expect(f.calls[0]!.url).toBe(`${BASE}catalog`);
+    expect(f.calls[0]!.method).toBe("GET");
+    expect(r).toEqual({ ok: true, catalog: cat, usage: { departments: { it: { people: 2 } }, holdReasons: {}, openWorkOrders: 3 } });
+    const bad = await createWpApi(cfg, { fetch: fakeFetch(() => json(200, { ok: true, catalog: { nope: 1 } })).fetch }).getCatalog();
+    expect(bad.ok).toBe(false);
+  });
+
+  it("putCatalog sends the whole list with baseRev and returns the saved lists", async () => {
+    const f = fakeFetch(() => json(200, { ok: true, catalog: { ...cat, catalogRev: 4 }, usage: {} }));
+    const items = [{ label: "Spa", short: "SPA", active: true }];
+    const r = await createWpApi(cfg, { fetch: f.fetch }).putCatalog("departments", items, 3);
+    expect(f.calls[0]!.url).toBe(`${BASE}catalog/departments`);
+    expect(f.calls[0]!.method).toBe("PUT");
+    expect(f.calls[0]!.headers["X-WP-Nonce"]).toBe("n1");
+    expect(f.calls[0]!.body).toEqual({ items, baseRev: 3 });
+    expect(r).toMatchObject({ ok: true, catalog: { catalogRev: 4 } });
+  });
+
+  it("a stale save comes back with the fresh lists and the refresh message", async () => {
+    const fresh = { ...cat, catalogRev: 9 };
+    const f = fakeFetch(() => json(409, { ok: false, code: "azl_stale", error: "x", catalog: fresh, usage: {} }));
+    const r = await createWpApi(cfg, { fetch: f.fetch }).putCatalog("holdReasons", [], 3);
+    expect(r).toEqual({ ok: false, stale: true, error: "Someone else changed this list. Your screen was refreshed; try again.", catalog: fresh, usage: { departments: {}, holdReasons: {} } });
+  });
+
+  it("refusals keep the server's message and index; forbidden, offline and server errors read plainly; a lost session asks to sign in", async () => {
+    const at = (status: number, data: unknown) => createWpApi(cfg, { fetch: fakeFetch(() => json(status, data)).fetch }).putCatalog("departments", [], 1);
+    expect(await at(400, { ok: false, code: "azl_invalid", error: "Enter a short code of 1 to 6 characters.", index: 2 })).toEqual({ ok: false, error: "Enter a short code of 1 to 6 characters.", index: 2 });
+    expect(await at(409, { ok: false, code: "azl_in_use", error: "Spa is used by 3 people. Archive it instead.", key: "spa" })).toEqual({ ok: false, error: "Spa is used by 3 people. Archive it instead." });
+    expect(await at(403, { code: "rest_forbidden", message: "Sorry, you are not allowed to do that." })).toEqual({ ok: false, error: "Sorry, you are not allowed to do that." });
+    expect(await at(503, {})).toEqual({ ok: false, error: "Could not reach the server. Check the connection and try again." });
+    const down = await createWpApi(cfg, { fetch: (async () => { throw new TypeError("offline"); }) as unknown as typeof fetch }).putCatalog("departments", [], 1);
+    expect(down).toEqual({ ok: false, error: "Could not reach the server. Check the connection and try again." });
+    const onAuthLost = vi.fn();
+    const lost = await createWpApi(cfg, { fetch: fakeFetch(() => json(401, { code: "rest_not_logged_in" })).fetch, onAuthLost }).putCatalog("departments", [], 1);
+    expect(lost).toEqual({ ok: false, error: "Please sign in again." });
+    expect(onAuthLost).toHaveBeenCalled();
+  });
+});

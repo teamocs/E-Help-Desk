@@ -4,7 +4,8 @@
  * names, so the existing client store works unchanged. Optional fields that are empty are left out
  * (as JSON.stringify drops undefined), never sent as null.
  *
- * One addition: `rev`, the change counter at read time, which the client can pass to /poll?since=.
+ * Additions: `rev`, the change counter at read time, which the client can pass to /poll?since=, and
+ * `catalog`, the hotel's lists (Azl_Catalog).
  *
  * @package azl-ehd
  */
@@ -65,6 +66,8 @@ final class Azl_Snapshot {
 			),
 			'at'         => $now,
 			'rev'        => $rev,
+			// The hotel's lists. A save bumps the change counter, so every phone gets them on its next poll.
+			'catalog'    => Azl_Catalog::get(),
 		);
 	}
 

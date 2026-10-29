@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { AppChrome, Shell } from "../App";
 import { remote } from "../domain/remote";
 import { staffApi } from "../domain/staffApi";
-import { app, applySnapshot, createStore, resetApp, setUI, toast, useUI } from "../domain/store";
+import { app, applySnapshot, canEditLists, createStore, resetApp, setCatalog, setUI, toast, useUI } from "../domain/store";
 import type { Role, Staff } from "../domain/types";
 import { Lock } from "../screens/Lock";
 import { AuthError, createWpApi, storageActor, type WpApi } from "./api";
@@ -21,6 +21,7 @@ const initials = (name: string) =>
 const TITLE: Record<string, string> = { owner: "Hotel owner", manager: "Manager", supervisor: "Supervisor" };
 const MANAGERS_ONLY = { ok: false, error: "Only the hotel owner or a manager can change staff." } as const;
 const OWNER_ONLY = { ok: false, error: "Only the hotel owner can manage logins." } as const;
+const LISTS_ONLY = { ok: false, error: "Only the hotel owner or a manager can change the lists." } as const;
 const RETRY_MS = 5000;
 
 export function makeApi(cfg: AzlConfig, fetchImpl?: typeof fetch): WpApi {
@@ -64,6 +65,14 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
     logins: () => (role === "owner" ? api.accounts() : Promise.resolve(OWNER_ONLY)),
     addLogin: (input) => (role === "owner" ? api.addAccount(input) : Promise.resolve(OWNER_ONLY)),
     setLoginDisabled: (id, disabled) => (role === "owner" ? api.setAccountDisabled(id, disabled) : Promise.resolve(OWNER_ONLY)),
+    catalog: () => (canEditLists(role) ? api.getCatalog() : Promise.resolve(LISTS_ONLY)),
+    saveList: async (list, items, baseRev) => {
+      if (!canEditLists(role)) return LISTS_ONLY;
+      const r = await api.putCatalog(list, items, baseRev);
+      // Saved, or someone else saved first: every screen follows the server's lists at once.
+      if (r.ok || r.catalog) setCatalog(r.catalog!);
+      return r;
+    },
   };
 
   const tick = async () => {

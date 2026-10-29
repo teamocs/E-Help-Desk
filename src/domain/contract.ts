@@ -22,6 +22,7 @@ import type {
   Staff,
   WorkOrder,
 } from "./types";
+import type { Catalog } from "./catalog";
 
 export interface Snapshot {
   property: { id: string; name: string };
@@ -38,6 +39,8 @@ export interface Snapshot {
   seq: Seq;
   /** Server time when the snapshot was read. */
   at: number;
+  /** The hotel's lists (departments, request types, bundles, hold reasons, job titles, findings). */
+  catalog?: Catalog;
 }
 
 interface Base {

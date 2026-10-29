@@ -28,7 +28,7 @@ final class Azl_Commands {
 	const MAX_COST        = 1e10; // decimal(12,2)
 	const ALERT           = 'Safety words detected. Duty manager and Security alerted over the local network. Staff notified (not BFP/911).';
 	const LOCKED_911      = 'The 911 call is already recorded for this incident';
-	const ESCALATE_ONLY   = 'Only on-site Engineering or IT items can become work orders.';
+	const ESCALATE_ONLY   = 'Only on-site items of a department that handles repairs can become work orders.';
 	const NO_ITEM         = 'Unknown item';
 	const NOTE_MAX        = 1000;
 	const MAX_RETURN      = 500;
@@ -190,7 +190,8 @@ final class Azl_Commands {
 			case 'resume':
 				return $this->step_item( $cmd );
 			case 'hold':
-				return is_string( $cmd['reason'] ?? null ) && isset( Azl_Rules::HOLD_REASONS[ $cmd['reason'] ] )
+				// Only an active reason; items already held keep an archived one.
+				return null !== Azl_Catalog::active( Azl_Catalog::locked(), 'holdReasons', $cmd['reason'] ?? null )
 					? $this->step_item( $cmd )
 					: self::fail( 'Unknown hold reason' );
 			case 'finish':
@@ -299,32 +300,38 @@ final class Azl_Commands {
 
 	/* ---------- requests ---------- */
 
-	/** @return array|null list of [name, dept, slaMin, after|null], or null for an unknown key */
-	private static function preset_specs( $keys ): ?array {
+	/**
+	 * The hotel's active request types, copied into the items (name, department, SLA): later edits to
+	 * the list never change a logged item.
+	 *
+	 * @return array|null list of [name, dept, slaMin, after|null], or null for an unknown or archived key
+	 */
+	private static function preset_specs( array $cat, $keys ): ?array {
 		if ( ! is_array( $keys ) || ! array_is_list( $keys ) ) {
 			return null;
 		}
 		$out = array();
 		foreach ( $keys as $k ) {
-			if ( ! is_string( $k ) || ! isset( Azl_Rules::PRESETS[ $k ] ) ) {
+			$p = Azl_Catalog::active( $cat, 'requestTypes', $k );
+			if ( null === $p ) {
 				return null;
 			}
-			list( $label, $dept, $sla ) = Azl_Rules::PRESETS[ $k ];
-			$out[]                      = array( $label, $dept, $sla, null );
+			$out[] = array( $p['label'], $p['dept'], $p['slaMin'], null );
 		}
 		return $out;
 	}
 
-	/** $offset is where the bundle's parts start in the request's item list. */
-	private static function bundle_specs( $key, int $offset ): ?array {
+	/** An active bundle's parts. $offset is where they start in the request's item list. */
+	private static function bundle_specs( array $cat, $key, int $offset ): ?array {
 		if ( null === $key ) {
 			return array();
 		}
-		if ( ! is_string( $key ) || ! isset( Azl_Rules::BUNDLES[ $key ] ) ) {
+		$b = Azl_Catalog::active( $cat, 'bundles', $key );
+		if ( null === $b ) {
 			return null;
 		}
 		$out = array();
-		foreach ( Azl_Rules::BUNDLES[ $key ]['parts'] as $p ) {
+		foreach ( $b['parts'] as $p ) {
 			$out[] = array( $p['name'], $p['dept'], $p['slaMin'], isset( $p['after'] ) ? $offset + $p['after'] : null );
 		}
 		return $out;
@@ -365,8 +372,9 @@ final class Azl_Commands {
 		if ( mb_strlen( $room ) > self::ROOM_MAX ) {
 			return self::fail( 'Keep the room under ' . self::ROOM_MAX . ' characters' );
 		}
-		$presets = self::preset_specs( $cmd['presets'] ?? array() );
-		$parts   = self::bundle_specs( $cmd['bundle'] ?? null, null === $presets ? 0 : count( $presets ) );
+		$cat     = Azl_Catalog::locked();
+		$presets = self::preset_specs( $cat, $cmd['presets'] ?? array() );
+		$parts   = self::bundle_specs( $cat, $cmd['bundle'] ?? null, null === $presets ? 0 : count( $presets ) );
 		if ( null === $presets || null === $parts ) {
 			return self::fail( 'Unknown request type' );
 		}
@@ -403,6 +411,7 @@ final class Azl_Commands {
 	}
 
 	private function complete_request( array $cmd ): array {
+		$cat = Azl_Catalog::locked();
 		$req = Azl_Db::row( 'SELECT incomplete FROM ' . Azl_Db::t( 'requests' ) . ' WHERE id = %s' . Azl_Db::lock(), array( $cmd['requestId'] ) );
 		if ( null === $req ) {
 			return self::fail( 'Unknown request' );
@@ -410,7 +419,7 @@ final class Azl_Commands {
 		if ( '1' !== (string) $req['incomplete'] ) {
 			return self::fail( 'This request already has its details' );
 		}
-		$specs = self::preset_specs( $cmd['presets'] ?? null );
+		$specs = self::preset_specs( $cat, $cmd['presets'] ?? null );
 		if ( null === $specs ) {
 			return self::fail( 'Unknown request type' );
 		}
@@ -543,8 +552,8 @@ final class Azl_Commands {
 
 	private function transfer( array $cmd ): array {
 		$dept = $cmd['dept'] ?? null;
-		if ( ! is_string( $dept ) || ! isset( Azl_Rules::DEPTS[ $dept ] ) ) {
-			return self::fail( 'Unknown department' );
+		if ( null === Azl_Catalog::active( Azl_Catalog::locked(), 'departments', $dept ) ) {
+			return self::fail( 'Unknown department' ); // or archived: no new work goes there
 		}
 		$it = $this->load_item( $cmd['itemId'] );
 		if ( null === $it ) {
@@ -584,12 +593,15 @@ final class Azl_Commands {
 
 	/* ---------- escalation ---------- */
 
+	/** A new work order needs an active department that handles repairs; existing ones carry on whatever happens to it. */
 	private function escalate( array $cmd ): array {
-		$it = $this->load_item( $cmd['itemId'] );
+		$cat = Azl_Catalog::locked();
+		$it  = $this->load_item( $cmd['itemId'] );
 		if ( null === $it ) {
 			return self::fail( self::NO_ITEM );
 		}
-		if ( ! in_array( $it['dept'], array( 'engineering', 'it' ), true ) || ! in_array( $it['status'], array( 'on_site', 'on_hold' ), true ) ) {
+		$dept = Azl_Catalog::active( $cat, 'departments', $it['dept'] );
+		if ( null === $dept || true !== $dept['repairs'] || ! in_array( $it['status'], array( 'on_site', 'on_hold' ), true ) ) {
 			return self::fail( self::ESCALATE_ONLY );
 		}
 		$req = Azl_Db::row( 'SELECT room, ticket_no FROM ' . Azl_Db::t( 'requests' ) . ' WHERE id = %s', array( $it['request_id'] ) );

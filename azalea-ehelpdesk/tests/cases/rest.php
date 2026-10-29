@@ -252,7 +252,7 @@ test(
 		eq( '{}', json_encode( $empty->handover ) );
 		$snap_keys = array_keys( Azl_Snapshot::load() );
 		sort( $snap_keys );
-		eq( array( 'at', 'cleaning', 'handover', 'incidents', 'items', 'properties', 'property', 'requests', 'rev', 'seq', 'staff', 'wos' ), $snap_keys );
+		eq( array( 'at', 'catalog', 'cleaning', 'handover', 'incidents', 'items', 'properties', 'property', 'requests', 'rev', 'seq', 'staff', 'wos' ), $snap_keys );
 
 		list( $request, $items, $res ) = logged( '501', array( 'towels', 'water' ), array( 'vip' => true, 'remarks' => 'Guest <b>asleep</b>' ) );
 		cmd( array( 'type' => 'relay', 'itemId' => $items[0] ) );

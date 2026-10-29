@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ago, DEPTS, HOLD_REASONS, PRESETS, isBlocked, isOpen, sla } from '../domain/rules';
+import { activeDepartments, activeOf, canEscalate, holdLabel } from '../domain/catalog';
+import { ago, isBlocked, isOpen, sla } from '../domain/rules';
 import { completeRequest, escalate, finishItem, hold, onSite, relay, resume, setUI, transfer, undoEscalate, useApp } from '../domain/store';
-import type { Dept, HoldReason, Item } from '../domain/types';
+import type { Item } from '../domain/types';
 import { Button, DeptChip, Group, Icon, Pill, Ring, Row } from '../ui/kit';
 import { springs } from '../lib/motion';
 
@@ -29,6 +30,7 @@ function ItemCard({ it }: { it: Item }) {
   const items = useApp((s) => s.items);
   const now = useApp((s) => s.now);
   const staff = useApp((s) => s.staff);
+  const catalog = useApp((s) => s.catalog);
   const [mode, setMode] = useState<null | 'hold' | 'transfer'>(null);
   const view = sla(it, items, now);
   const blocked = isBlocked(it, items);
@@ -49,7 +51,7 @@ function ItemCard({ it }: { it: Item }) {
             {who ? `Assigned to ${who}` : 'In the department queue'}
             {it.xFrom ? ' · transferred in' : ''}
           </p>
-          {it.status === 'on_hold' && it.holdReason && <p className="t-foot" style={{ margin: '4px 0 0', color: 'var(--warn)' }}>{HOLD_REASONS[it.holdReason]}. The clock is paused.</p>}
+          {it.status === 'on_hold' && it.holdReason && <p className="t-foot" style={{ margin: '4px 0 0', color: 'var(--warn)' }}>{holdLabel(it.holdReason, catalog)}. The clock is paused.</p>}
           {blocked && pre && <p className="t-foot" style={{ margin: '4px 0 0', color: 'var(--warn)' }}>Waiting for “{pre.name}”. No clock runs until that is done.</p>}
           {it.status === 'escalated' && <p className="t-foot c2" style={{ margin: '4px 0 0' }}>Tracked as a work order. Completing it closes this item.</p>}
         </div>
@@ -66,8 +68,8 @@ function ItemCard({ it }: { it: Item }) {
         <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
           {next && !blocked && <Button size="sm" feel={next.label === 'Done' ? 'success' : 'medium'} onClick={next.run}>{next.label}</Button>}
           {it.status === 'new' && !blocked && <Button size="sm" variant="tint" onClick={() => onSite(it.id)}>On site</Button>}
-          {['relayed', 'on_site'].includes(it.status) && <Button size="sm" variant="gray" onClick={() => setMode(mode === 'hold' ? null : 'hold')}>Hold…</Button>}
-          {['engineering', 'it'].includes(it.dept) && ['on_site', 'on_hold'].includes(it.status) && (
+          {['relayed', 'on_site'].includes(it.status) && activeOf(catalog.holdReasons).length > 0 && <Button size="sm" variant="gray" onClick={() => setMode(mode === 'hold' ? null : 'hold')}>Hold…</Button>}
+          {canEscalate(it.dept, catalog) && ['on_site', 'on_hold'].includes(it.status) && (
             <Button size="sm" variant="tint" icon="wrench" feel="medium" onClick={() => escalate(it.id)}>Escalate to work order</Button>
           )}
           <Button size="sm" variant="gray" onClick={() => setMode(mode === 'transfer' ? null : 'transfer')}>Transfer…</Button>
@@ -87,12 +89,12 @@ function ItemCard({ it }: { it: Item }) {
             <div className="row" style={{ flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
               <span className="t-foot c2" style={{ width: '100%' }}>{mode === 'hold' ? 'Why is it waiting? The clock pauses.' : 'Move this item to'}</span>
               {mode === 'hold' &&
-                (Object.keys(HOLD_REASONS) as HoldReason[]).map((r) => (
-                  <button key={r} type="button" className="chip" onClick={() => { hold(it.id, r); setMode(null); }}>{HOLD_REASONS[r]}</button>
+                activeOf(catalog.holdReasons).map((r) => (
+                  <button key={r.key} type="button" className="chip" onClick={() => { hold(it.id, r.key); setMode(null); }}>{r.label}</button>
                 ))}
               {mode === 'transfer' &&
-                (Object.keys(DEPTS) as Dept[]).filter((d) => d !== it.dept).map((d) => (
-                  <button key={d} type="button" className="chip" onClick={() => { transfer(it.id, d); setMode(null); }}>{DEPTS[d].label}</button>
+                activeDepartments(catalog).filter((d) => d.key !== it.dept).map((d) => (
+                  <button key={d.key} type="button" className="chip" onClick={() => { transfer(it.id, d.key); setMode(null); }}>{d.label}</button>
                 ))}
             </div>
           </motion.div>
@@ -115,6 +117,7 @@ export function RequestDetail({ id }: { id: string }) {
   const req = useApp((s) => s.requests.find((r) => r.id === id));
   const items = useApp((s) => s.items);
   const now = useApp((s) => s.now);
+  const types = useApp((s) => s.catalog.requestTypes);
   const [pick, setPick] = useState<string[]>([]);
   if (!req) return <p className="c2">This ticket is no longer available.</p>;
   const its = req.itemIds.map((i) => items[i]).filter(Boolean);
@@ -137,7 +140,7 @@ export function RequestDetail({ id }: { id: string }) {
       {req.incomplete && its.length === 0 && (
         <Group title="Finish logging" note="You saved this room in two taps. Add what the guest needs.">
           <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            {PRESETS.slice(0, 12).map((p) => (
+            {activeOf(types).map((p) => (
               <button key={p.key} type="button" className="chip" aria-pressed={pick.includes(p.key)} onClick={() => setPick((x) => (x.includes(p.key) ? x.filter((k) => k !== p.key) : [...x, p.key]))}>
                 <Icon name={p.icon} size={16} /> {p.label}
               </button>

@@ -1,5 +1,6 @@
 import { ROLE_LABEL } from '../domain/rules';
-import { app, lock, setPref, useApp, useUI } from '../domain/store';
+import { app, canEditLists, lock, setPref, useApp, useUI, type AccountRole } from '../domain/store';
+import { Lists } from './Lists';
 import { staffApi } from '../domain/staffApi';
 import { haptic } from '../lib/haptics';
 import { Avatar, Button, Group, Icon, Screen, Switch } from '../ui/kit';
@@ -9,6 +10,9 @@ import type { Prefs } from '../domain/types';
 
 const SIZES = [0.9, 1, 1.12, 1.28, 1.48];
 const SIZE_NAMES = ['Small', 'Default', 'Large', 'Larger', 'Largest'];
+
+/** The Lists section: owners and managers on their own account (not while acting as a PIN person). */
+export const showLists = (role: AccountRole, asAccount: boolean) => asAccount && canEditLists(role);
 
 function Toggle({ icon, title, sub, k }: { icon: string; title: string; sub?: string; k: 'contrast' | 'haptics' | 'sound' | 'shortcuts' }) {
   const v = useApp((s) => s.prefs[k]);
@@ -46,6 +50,7 @@ export function Settings() {
       )}
 
       {asAccount && (role === 'owner' || role === 'manager') && <StaffAdmin />}
+      {showLists(role, asAccount) && <Lists />}
       {asAccount && role === 'owner' && <Logins />}
 
       <Group title="Display">

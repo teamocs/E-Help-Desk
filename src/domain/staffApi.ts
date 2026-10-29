@@ -1,3 +1,4 @@
+import type { CatalogSave, CatalogView, Draft, ListName } from "./catalog";
 import type { Outcome, StaffInput } from "./contract";
 
 // The server calls the staff and account screens need, handed over by WpApp so the shared screens (Lock, Settings,
@@ -25,6 +26,10 @@ export interface StaffApi {
   logins(): Promise<Outcome<{ accounts: Login[] }>>;
   addLogin(input: { name: string; email: string; role: "manager" | "supervisor" | "device" }): Promise<Outcome>;
   setLoginDisabled(id: number, disabled: boolean): Promise<Outcome>;
+  /** The hotel's lists, fresh, with usage counts (owner and manager). */
+  catalog(): Promise<Outcome<CatalogView>>;
+  /** Saves one list. On success, and when someone else saved first, every screen gets the server's lists. */
+  saveList(list: ListName, items: Draft[], baseRev: number): Promise<CatalogSave>;
 }
 
 export const staffApi: { current: StaffApi | null } = { current: null };

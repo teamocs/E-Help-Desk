@@ -6,6 +6,8 @@ import { createServer } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
+// The desk's own catalog rules (Node runs the TypeScript file directly): seed, validation and the in-use check.
+import { LISTS, SEED_CATALOG, deleteBlocker, validateList } from "../src/domain/catalog.ts";
 
 const PORT = Number(process.env.PORT) || 8787;
 const root = fileURLToPath(new URL("../azalea-ehelpdesk/assets/", import.meta.url));
@@ -48,15 +50,65 @@ const db = {
 };
 const accounts = [{ id: 2, name: "Ana Villanueva", email: "ana@example.test", role: "manager", disabled: false }, { id: 3, name: "Front desk phone", email: "desk-phone@example.test", role: "device", disabled: false }];
 let rev = 1, nextId = 10;
+let catalog = structuredClone(SEED_CATALOG);
+
+/* ---------- the hotel's lists: GET /catalog, PUT /catalog/<list> (stale and in-use refusals like the plugin) ---------- */
+function usage() {
+  const out = { departments: {}, holdReasons: {} };
+  const bump = (list, key, what, n = 1) => { if (key) ((out[list][key] ??= {})[what] = (out[list][key][what] ?? 0) + n); };
+  for (const s of staff) bump("departments", s.dept, "people");
+  for (const d of new Set(Object.values(db.items).map((i) => `${i.dept}|${i.requestId}`))) bump("departments", d.split("|")[0], "requests");
+  for (const w of db.wos) bump("departments", w.dept, "workOrders");
+  for (const d of new Set(Object.values(db.items).filter((i) => i.holdReason).map((i) => `${i.holdReason}|${i.requestId}`))) bump("holdReasons", d.split("|")[0], "requests");
+  out.openWorkOrders = db.wos.filter((w) => w.status !== "done").length;
+  return out;
+}
+function makeKey(label, taken) {
+  const base = (label.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "item").slice(0, 20);
+  let key = base;
+  for (let n = 2; key.length < 2 || taken.has(key); n++) key = base.slice(0, 20 - `_${n}`.length).replace(/_+$/, "") + `_${n}`;
+  taken.add(key);
+  return key;
+}
+function putList(list, b) {
+  if (!LISTS.includes(list)) return [404, { ok: false, code: "azl_invalid", error: "Unknown list." }];
+  if (!Array.isArray(b.items) || !Number.isInteger(b.baseRev)) return [400, { ok: false, code: "azl_invalid", error: "Send the whole list and the version you loaded." }];
+  if (b.baseRev !== catalog.catalogRev) return [409, { ok: false, code: "azl_stale", error: "Someone else changed this list. Your screen was refreshed; try again.", catalog, usage: usage() }];
+  const known = new Set(catalog[list].map((x) => x.key));
+  const bad = b.items.findIndex((x) => x.key && !known.has(x.key));
+  if (bad >= 0) return [400, { ok: false, code: "azl_invalid", error: "This entry no longer exists. Reload the list.", index: bad }];
+  const items = b.items.map((x) => ({ ...x, label: String(x.label ?? "").trim(), active: x.active !== false, ...(list === "departments" ? { repairs: x.repairs ?? false } : {}) }));
+  const problem = validateList(list, items, catalog, usage().openWorkOrders);
+  if (problem) return [400, { ok: false, code: "azl_invalid", ...problem }];
+  const kept = new Set(items.map((x) => x.key));
+  for (const old of catalog[list]) {
+    const why = kept.has(old.key) ? "" : deleteBlocker(list, old.key, catalog, usage());
+    if (why) return [409, { ok: false, code: "azl_in_use", key: old.key, error: `${old.label}: ${why}` }];
+  }
+  const taken = new Set([...known, ...kept]);
+  catalog = { ...catalog, [list]: items.map((x) => ({ ...x, key: x.key || makeKey(x.label, taken) })), catalogRev: catalog.catalogRev + 1 };
+  rev++;
+  return [200, { ok: true, catalog, usage: usage() }];
+}
 
 /* ---------- commands: just enough to keep the screens honest ---------- */
-const PRESET = { towels: ["Extra towels", "housekeeping"], clean: ["Room cleaning", "housekeeping"], inspection: ["Checkout inspection", "housekeeping"], ac: ["AC not cold", "engineering"], bulb: ["Light bulb", "engineering"], wifi: ["Wi-Fi issue", "it"], water: ["Bottled water", "fnb"], late: ["Late checkout", "frontdesk"], noise: ["Noise complaint", "security"] };
+const activeIn = (list, key) => catalog[list].find((x) => x.key === key && x.active);
 function apply(c, by) {
   const it = db.items[c.itemId], wo = db.wos.find((w) => w.id === c.woId), inc = db.incidents.find((i) => i.id === c.incidentId), t = Date.now();
   const mark = (x, status, what, extra = {}) => Object.assign(x, { status, ...extra, events: [...(x.events ?? []), ev(what, t, by)] });
-  const addItems = (reqId, ids, keys) => keys.forEach((k, n) => { const [name, dept] = PRESET[k] ?? [k, "frontdesk"]; db.items[ids[n]] = item(ids[n], reqId, name, dept, "new", 0); });
+  const addItems = (reqId, ids, keys) => keys.forEach((k, n) => { const p = activeIn("requestTypes", k); db.items[ids[n]] = item(ids[n], reqId, p.label, p.dept, "new", 0, { slaMin: p.slaMin }); });
+  if ((c.presets ?? []).some((k) => !activeIn("requestTypes", k)) || (c.bundle && !activeIn("bundles", c.bundle))) return { ok: false, error: "Unknown request type" };
+  if (c.type === "transfer" && !activeIn("departments", c.dept)) return { ok: false, error: "Unknown department" };
+  if (c.type === "hold" && !activeIn("holdReasons", c.reason)) return { ok: false, error: "Unknown hold reason" };
+  if (c.type === "escalate" && !(activeIn("departments", it?.dept)?.repairs && ["on_site", "on_hold"].includes(it?.status))) return { ok: false, error: "Only on-site items of a department that handles repairs can become work orders." };
   switch (c.type) {
-    case "logRequest": addItems(c.requestId, c.itemIds, c.presets ?? []); db.requests.unshift({ id: c.requestId, ticket: `T-0${++db.seq.t}`, room: c.room, source: "staff", loggedBy: by, createdAt: t, itemIds: c.itemIds.slice(0, (c.presets ?? []).length), incomplete: !!c.later, vip: !!c.vip, remarks: c.remarks }); break;
+    case "logRequest": {
+      addItems(c.requestId, c.itemIds, c.presets ?? []);
+      const parts = c.bundle ? activeIn("bundles", c.bundle).parts : [], off = (c.presets ?? []).length;
+      parts.forEach((p, j) => { const id = c.itemIds[off + j]; db.items[id] = item(id, c.requestId, p.name, p.dept, "new", 0, { slaMin: p.slaMin, dependsOn: p.after != null ? c.itemIds[off + p.after] : undefined }); });
+      db.requests.unshift({ id: c.requestId, ticket: `T-0${++db.seq.t}`, room: c.room, source: "staff", loggedBy: by, createdAt: t, itemIds: c.itemIds.slice(0, off + parts.length), incomplete: !!c.later || off + parts.length === 0, vip: !!c.vip, remarks: c.remarks });
+      break;
+    }
     case "completeRequest": { const r = db.requests.find((x) => x.id === c.requestId); addItems(c.requestId, c.itemIds, c.presets); Object.assign(r, { itemIds: [...r.itemIds, ...c.itemIds], incomplete: false }); break; }
     case "relay": mark(it, "relayed", "Relayed", { ackAt: t }); break;
     case "onSite": mark(it, "on_site", "On site", { ackAt: it.ackAt ?? t }); break;
@@ -101,7 +153,7 @@ function page(url, res) {
   if (!manifest) return send(res, 503, "Run npm run build:wp first.", "text/plain");
   const vars = Object.entries({ ...hotel.vars, ...SHARED }).map(([k, v]) => `${k}:${v}`).join(";");
   const AZL = { restUrl: `http://localhost:${PORT}${NS}/`, nonce: "mock-nonce", loginUrl: "/helpdesk/login/", pollMs: 5000, property: { id: `mock-${key}`, name: hotel.name },
-    user: { name: role === "device" ? "Front desk phone" : role === "owner" ? "Mr. Reyes" : "Ana Villanueva", role, canManage: role === "owner" || role === "manager" },
+    user: { name: role === "device" ? "Front desk phone" : role === "owner" ? "Mr. Reyes" : "Ana Villanueva", role, canManage: role === "owner" || role === "manager", canManageLists: role === "owner" || role === "manager" },
     theme: { key, name: hotel.name, logoUrl: url.searchParams.get("logo") === "0" ? "" : "/logo.svg", fonts: {} }, version: "mock" };
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Set-Cookie": `azl_role=${role}; Path=/; SameSite=Lax` });
   res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light"><title>E-Help Desk · ${hotel.name}</title>
@@ -124,7 +176,8 @@ createServer(async (req, res) => {
   }
   if (!p.startsWith(NS)) return send(res, 404, "Not found", "text/plain");
   const r = p.slice(NS.length), actor = /^tok-(.+)$/.exec(req.headers["x-azl-actor"] ?? "")?.[1] ?? null, role = roleOf(req);
-  if (r === "/snapshot") return send(res, 200, { ...db, staff, property: { id: "mock", name: "Mock" }, properties: [], at: Date.now(), actor });
+  if (r === "/snapshot") return send(res, 200, { ...db, staff, property: { id: "mock", name: "Mock" }, properties: [], at: Date.now(), actor, catalog });
+  if (r === "/catalog" && m === "GET") return send(res, 200, { ok: true, catalog, usage: usage() });
   if (r === "/poll") { const since = Number(url.searchParams.get("since")); return send(res, 200, { ok: true, rev, changed: since !== rev }); }
   const b = m === "GET" ? {} : await body(req);
   if (r === "/command") {
@@ -135,6 +188,11 @@ createServer(async (req, res) => {
   if (r === "/pin/sign-out" || r === "/auth/logout") return send(res, 200, { ok: true, redirect: "/helpdesk/login/" });
   if (r === "/staff" && m === "POST") { const id = `s-${nextId++}`; staff.push({ id, name: b.name, title: b.title, role: b.role, dept: b.dept, onShift: true, initials: b.name.slice(0, 2).toUpperCase() }); rev++; return send(res, 201, { ok: true, id }); }
   if (r.startsWith("/staff/")) { const s = staff.find((x) => x.id === r.slice(7)); if (b.active === false) staff.splice(staff.indexOf(s), 1); rev++; return send(res, 200, { ok: true }); }
+  if (r.startsWith("/catalog/") && m === "PUT") {
+    if (role !== "owner" && role !== "manager") return send(res, 403, { code: "rest_forbidden", message: "Sorry, you are not allowed to do that." });
+    const [status, out] = putList(r.slice(9), b);
+    return send(res, status, out);
+  }
   if (r.startsWith("/accounts") && role !== "owner") return send(res, 403, { code: "rest_forbidden", message: "Only the hotel owner can manage logins." });
   if (r === "/accounts" && m === "GET") return send(res, 200, { ok: true, accounts: [{ id: 1, name: "Mr. Reyes", email: "owner@example.test", role: "owner", disabled: false, self: true }, ...accounts] });
   if (r === "/accounts" && m === "POST") {

@@ -2,8 +2,8 @@
 /**
  * Roles, capabilities and the wp-admin lockdown.
  *
- * - azl_owner:      Hotel Owner. Runs the desk, manages staff and the hotel's desk accounts.
- * - azl_manager:    Manager. Runs the desk, manages staff.
+ * - azl_owner:      Hotel Owner. Runs the desk, manages staff, the hotel's lists and desk accounts.
+ * - azl_manager:    Manager. Runs the desk, manages staff and the hotel's lists.
  * - azl_supervisor: Supervisor. Runs the desk under their own account.
  * - azl_device:     Shared phone. Opens the desk; every action needs a staff PIN.
  * - administrator:  every azl_* capability (the agency, OCS). The only accounts that use wp-admin.
@@ -26,15 +26,17 @@ final class Azl_Caps {
 	const MANAGE_STAFF    = 'azl_manage_staff';
 	const MANAGE_SETTINGS = 'azl_manage_settings';
 	const MANAGE_ACCOUNTS = 'azl_manage_accounts';
-	const DIRECT          = 'azl_act_directly';
+	/** Edit the hotel's lists (departments, request types, bundles, hold reasons, job titles, findings). */
+	const MANAGE_LISTS = 'azl_manage_lists';
+	const DIRECT       = 'azl_act_directly';
 
 	/** Bump when ROLES changes: maybe_upgrade() re-applies them once on every site. */
-	const ROLES_VERSION = '2';
+	const ROLES_VERSION = '3';
 	const ROLES_OPTION  = 'azl_roles_version';
 
 	const ROLES = array(
-		'azl_owner'      => array( 'Hotel Owner', array( self::USE_DESK, self::DIRECT, self::MANAGE_STAFF, self::MANAGE_ACCOUNTS ) ),
-		'azl_manager'    => array( 'Manager', array( self::USE_DESK, self::DIRECT, self::MANAGE_STAFF ) ),
+		'azl_owner'      => array( 'Hotel Owner', array( self::USE_DESK, self::DIRECT, self::MANAGE_STAFF, self::MANAGE_ACCOUNTS, self::MANAGE_LISTS ) ),
+		'azl_manager'    => array( 'Manager', array( self::USE_DESK, self::DIRECT, self::MANAGE_STAFF, self::MANAGE_LISTS ) ),
 		'azl_supervisor' => array( 'Supervisor', array( self::USE_DESK, self::DIRECT ) ),
 		'azl_device'     => array( 'Shared phone', array( self::USE_DESK ) ),
 	);
@@ -123,7 +125,7 @@ final class Azl_Caps {
 
 	/** @return string[] */
 	public static function all(): array {
-		return array( self::USE_DESK, self::DIRECT, self::MANAGE_STAFF, self::MANAGE_SETTINGS, self::MANAGE_ACCOUNTS );
+		return array( self::USE_DESK, self::DIRECT, self::MANAGE_STAFF, self::MANAGE_SETTINGS, self::MANAGE_ACCOUNTS, self::MANAGE_LISTS );
 	}
 
 	/** A shared-device account may not act as itself: with no staff member signed in, its commands are refused. */

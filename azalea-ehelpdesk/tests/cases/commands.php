@@ -181,7 +181,7 @@ test(
 test(
 	'only on-site engineering or IT items escalate',
 	function () {
-		$error             = 'Only on-site Engineering or IT items can become work orders.';
+		$error             = Azl_Commands::ESCALATE_ONLY;
 		list( , $towels )  = logged( '332', array( 'towels' ) );
 		cmd( array( 'type' => 'onSite', 'itemId' => $towels[0] ) );
 		list( , $ac )      = logged( '332', array( 'ac' ) );

@@ -40,8 +40,11 @@ final class Azl_Staff {
 		return is_string( $v ) ? trim( sanitize_text_field( $v ) ) : '';
 	}
 
-	/** The first problem with a staff record, or null. */
-	private static function problem( array $in ): ?string {
+	/**
+	 * The first problem with a staff record, or null. The department must be active in the hotel's
+	 * lists, or be the one the person already has ($keep: archiving a department never forces edits).
+	 */
+	private static function problem( array $in, array $cat, ?string $keep = null ): ?string {
 		$name  = self::line( $in['name'] ?? null );
 		$title = self::line( $in['title'] ?? null );
 		if ( mb_strlen( $name ) < 1 || mb_strlen( $name ) > 80 ) {
@@ -54,7 +57,8 @@ final class Azl_Staff {
 			return 'Pick a role.';
 		}
 		$dept = $in['dept'] ?? null;
-		if ( null !== $dept && ! ( is_string( $dept ) && isset( Azl_Rules::DEPTS[ $dept ] ) ) ) {
+		$usable = null === $dept || ( null !== $keep && $dept === $keep ) || null !== Azl_Catalog::active( $cat, 'departments', $dept );
+		if ( ! $usable ) {
 			return 'Pick a department.';
 		}
 		return null;
@@ -83,19 +87,19 @@ final class Azl_Staff {
 	 * WordPress account. @return array{ok: bool, id?: string, error?: string}
 	 */
 	public static function create( array $in, $pin ): array {
-		$bad = self::problem( $in ) ?? self::pin_problem( $pin );
-		if ( null !== $bad ) {
-			return self::fail( $bad );
-		}
 		$wp_user = self::wp_user( $in['wpUserId'] ?? null );
-		if ( false === $wp_user ) {
-			return self::fail( 'Unknown WordPress user.' );
-		}
-		$name = self::line( $in['name'] );
-		$id   = Azl_Db::uuid();
-		$now  = Azl_Db::now();
+		$id      = Azl_Db::uuid();
+		$now     = Azl_Db::now();
 		return Azl_Db::transaction(
-			function () use ( $in, $pin, $name, $id, $now, $wp_user ) {
+			function () use ( $in, $pin, $id, $now, $wp_user ) {
+				$bad = self::problem( $in, Azl_Catalog::locked() ) ?? self::pin_problem( $pin );
+				if ( null === $bad && false === $wp_user ) {
+					$bad = 'Unknown WordPress user.';
+				}
+				if ( null !== $bad ) {
+					return array( false, self::fail( $bad ) );
+				}
+				$name = self::line( $in['name'] );
 				Azl_Db::insert(
 					'staff',
 					array(
@@ -131,6 +135,7 @@ final class Azl_Staff {
 		$id = strtolower( $id );
 		return Azl_Db::transaction(
 			function () use ( $id, $in ) {
+				$cat = Azl_Catalog::locked();
 				$t   = Azl_Db::t( 'staff' );
 				$cur = Azl_Db::row( "SELECT name, title, role, dept, active FROM $t WHERE id = %s" . Azl_Db::lock(), array( $id ) );
 				if ( null === $cur || '1' !== (string) $cur['active'] ) {
@@ -142,7 +147,7 @@ final class Azl_Staff {
 					'role'  => array_key_exists( 'role', $in ) ? $in['role'] : $cur['role'],
 					'dept'  => array_key_exists( 'dept', $in ) ? $in['dept'] : $cur['dept'],
 				);
-				$bad = self::problem( $next );
+				$bad = self::problem( $next, $cat, $cur['dept'] );
 				if ( null === $bad && array_key_exists( 'pin', $in ) ) {
 					$bad = self::pin_problem( $in['pin'] );
 				}

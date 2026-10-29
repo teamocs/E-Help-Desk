@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { DEPTS, ROLE_LABEL } from '../domain/rules';
+import { activeDepartments, activeOf, MAX } from '../domain/catalog';
+import { ROLE_LABEL } from '../domain/rules';
 import { remote } from '../domain/remote';
 import { staffApi } from '../domain/staffApi';
 import { toast, useApp } from '../domain/store';
-import type { Dept } from '../domain/types';
 import { Avatar, Button, Group } from '../ui/kit';
 
 const ROLES = ['hdo', 'staff', 'supervisor'] as const;
@@ -14,7 +14,9 @@ export function StaffAdmin() {
   const [name, setName] = useState('');
   const [title, setTitle] = useState('');
   const [role, setRole] = useState<(typeof ROLES)[number]>('staff');
-  const [dept, setDept] = useState<Dept | ''>('');
+  const [dept, setDept] = useState('');
+  const catalog = useApp((s) => s.catalog);
+  const [savingTitle, setSavingTitle] = useState(false);
   const [pin, setPin] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [newPin, setNewPin] = useState('');
@@ -35,6 +37,21 @@ export function StaffAdmin() {
     toast(done, 'success');
     await remote.refresh(true);
     return true;
+  }
+
+  const typed = title.trim();
+  const knownTitle = catalog.jobTitles.some((t) => t.label.toLowerCase() === typed.toLowerCase());
+  const canAddTitle = typed.length > 0 && typed.length <= 40 && !knownTitle && catalog.jobTitles.length < MAX.jobTitles;
+
+  /** One tap: the typed title joins the hotel's job titles (Settings, Lists), so it is suggested next time. */
+  async function addTitle() {
+    setSavingTitle(true);
+    setError('');
+    const items = [...catalog.jobTitles, { label: typed, active: true }];
+    const r = await api!.saveList('jobTitles', items, catalog.catalogRev);
+    setSavingTitle(false);
+    if (r.ok) toast(`“${typed}” added to the job titles.`, 'success');
+    else setError(r.error);
   }
 
   async function add(e: React.FormEvent) {
@@ -86,7 +103,15 @@ export function StaffAdmin() {
         <h2 className="group-title">Add a person</h2>
         <div className="group" style={{ padding: 16, display: 'grid', gap: 14 }}>
           <div><label className="field-label" htmlFor="st-name">Full name</label><input id="st-name" className="field" autoComplete="off" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} required /></div>
-          <div><label className="field-label" htmlFor="st-title">Job title</label><input id="st-title" className="field" placeholder="e.g. Room attendant" autoComplete="off" maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)} required /></div>
+          <div>
+            <label className="field-label" htmlFor="st-title">Job title</label>
+            <input id="st-title" className="field" list="st-titles" placeholder="Pick or type a title" autoComplete="off" maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)} aria-describedby="st-title-help" required />
+            <datalist id="st-titles">{activeOf(catalog.jobTitles).map((t) => <option key={t.key} value={t.label} />)}</datalist>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+              <p className="field-help" id="st-title-help" style={{ margin: 0, flex: 1, minWidth: '12rem' }}>Suggestions come from Settings, Lists, Job titles. Any title works.</p>
+              {canAddTitle && <button type="button" className="btn btn-plain btn-sm" disabled={savingTitle} onClick={() => void addTitle()}>{savingTitle ? 'Adding…' : `Add “${typed.length > 18 ? `${typed.slice(0, 18)}…` : typed}” to the list`}</button>}
+            </div>
+          </div>
           <div>
             <label className="field-label" htmlFor="st-role">Role</label>
             <select id="st-role" className="field" value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}>
@@ -95,9 +120,9 @@ export function StaffAdmin() {
           </div>
           <div>
             <label className="field-label" htmlFor="st-dept">Department</label>
-            <select id="st-dept" className="field" value={dept} onChange={(e) => setDept(e.target.value as Dept | '')}>
+            <select id="st-dept" className="field" value={dept} onChange={(e) => setDept(e.target.value)}>
               <option value="">No department</option>
-              {(Object.keys(DEPTS) as Dept[]).map((d) => <option key={d} value={d}>{DEPTS[d].label}</option>)}
+              {activeDepartments(catalog).map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
             </select>
           </div>
           <div><label className="field-label" htmlFor="st-pin">Four-digit PIN</label><input id="st-pin" className="field" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required /></div>

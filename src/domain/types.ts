@@ -1,9 +1,13 @@
-export type Dept = 'housekeeping' | 'engineering' | 'it' | 'fnb' | 'frontdesk' | 'security';
+import type { Catalog } from './catalog';
+
+/** A department key from the hotel's catalog (see catalog.ts). May be archived, or unknown on an old record. */
+export type Dept = string;
 export type Role = 'hdo' | 'staff' | 'supervisor' | 'manager' | 'owner';
 export type ItemStatus =
   | 'new' | 'relayed' | 'on_site' | 'on_hold' | 'done'
   | 'transferred' | 'escalated' | 'cant_do' | 'duplicate' | 'cancelled';
-export type HoldReason = 'parts' | 'no_access' | 'dnd' | 'vendor' | 'guest_declined';
+/** A hold-reason key from the hotel's catalog. */
+export type HoldReason = string;
 export type Hazard = 'smoke' | 'gas' | 'flood' | 'medical' | 'threat' | 'lift';
 
 export interface Staff {
@@ -136,6 +140,8 @@ export interface Seed {
 export interface State {
   now: number;
   me: string | null;
+  /** The hotel's lists, from the latest snapshot (the factory lists until then). */
+  catalog: Catalog;
   staff: Staff[];
   requests: Request[];
   items: Record<string, Item>;

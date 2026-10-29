@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { ago, DEPTS, peso } from '../domain/rules';
+import { activeOf, deptLabel } from '../domain/catalog';
+import { ago, peso } from '../domain/rules';
 import { assessWo, completeWo, go, holdWo, reopenWo, setUI, startWo, useApp, useUI } from '../domain/store';
 import type { WoStatus } from '../domain/types';
 import { Button, DeptChip, Empty, Group, Icon, Pill, Row, Screen, Segmented } from '../ui/kit';
 
 const ORDER: WoStatus[] = ['reported', 'assessed', 'in_progress', 'on_hold', 'done'];
 const LABEL: Record<WoStatus, string> = { reported: 'Reported', assessed: 'Assessed', in_progress: 'In progress', on_hold: 'On hold', done: 'Done' };
-const FINDINGS = ['Worn part, replace', 'Leak at joint, reseal', 'Needs repainting', 'Vendor repair needed'];
 
 export function Maintenance() {
   const wos = useApp((s) => s.wos);
@@ -15,7 +15,7 @@ export function Maintenance() {
   return (
     <Screen title="Work orders" subtitle={wos.length ? `${open} open · estimated and actual cost tracked` : 'Repairs that need more than a quick fix'}>
       {wos.length === 0 && (
-        <Empty icon="wrench" text="No work orders yet. They start from an on-site Engineering or IT item on a ticket: open it and choose Escalate." action="Go to requests" onAction={() => go('requests')} />
+        <Empty icon="wrench" text="No work orders yet. They start from an on-site item of a department that handles repairs: open the ticket and choose Escalate." action="Go to requests" onAction={() => go('requests')} />
       )}
       {ORDER.map((st) => {
         const ws = wos.filter((w) => w.status === st);
@@ -38,7 +38,7 @@ export function Maintenance() {
           </Group>
         );
       })}
-      {wos.length > 0 && <p className="t-foot c2" style={{ padding: '12px 4px' }}>Tickets become work orders from the Escalate button on an on-site Engineering or IT item.</p>}
+      {wos.length > 0 && <p className="t-foot c2" style={{ padding: '12px 4px' }}>Tickets become work orders from the Escalate button on an on-site item of a department that handles repairs (Settings, Lists, Departments).</p>}
     </Screen>
   );
 }
@@ -47,6 +47,7 @@ export function WoDetail({ id }: { id: string }) {
   const wo = useApp((s) => s.wos.find((w) => w.id === id));
   const staff = useApp((s) => s.staff);
   const now = useApp((s) => s.now);
+  const catalog = useApp((s) => s.catalog);
   const [note, setNote] = useState('');
   const [kind, setKind] = useState<'inhouse' | 'outsource'>('inhouse');
   const [who, setWho] = useState('');
@@ -73,7 +74,7 @@ export function WoDetail({ id }: { id: string }) {
       <Group title="Details">
         <Row icon="home" title={wo.loc} sub={wo.area} />
         <Row icon="user" title={`Reported by ${name(wo.reportedBy)}`} sub={`Entered by ${name(wo.encodedBy)} · ${ago(now - wo.createdAt)} ago`} />
-        {wo.assignType && <Row icon="wrench" title={wo.assignType === 'outsource' ? `Outsourced to ${wo.contractor ?? 'contractor'}` : 'Done in-house'} sub={`${DEPTS[wo.dept].label}`} />}
+        {wo.assignType && <Row icon="wrench" title={wo.assignType === 'outsource' ? `Outsourced to ${wo.contractor ?? 'contractor'}` : 'Done in-house'} sub={deptLabel(wo.dept, catalog)} />}
         {wo.assessment && <Row icon="clip" title={wo.assessment} sub="Assessment" />}
       </Group>
 
@@ -93,9 +94,11 @@ export function WoDetail({ id }: { id: string }) {
 
       {wo.status === 'reported' && (
         <Group title="Assess">
-          <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-            {FINDINGS.map((f) => <button key={f} type="button" className="chip" aria-pressed={note === f} onClick={() => setNote(f)}>{f}</button>)}
-          </div>
+          {activeOf(catalog.woFindings).length > 0 && (
+            <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
+              {activeOf(catalog.woFindings).map((f) => <button key={f.key} type="button" className="chip" aria-pressed={note === f.label} onClick={() => setNote(f.label)}>{f.label}</button>)}
+            </div>
+          )}
           <div className="row"><input className="field" placeholder="Findings" aria-label="Findings" value={note} onChange={(e) => setNote(e.target.value)} /></div>
           <div className="row"><Segmented label="Who does the work" value={kind} onChange={setKind} options={[{ value: 'inhouse', label: 'In-house' }, { value: 'outsource', label: 'Outsource' }]} /></div>
           {kind === 'outsource' && <div className="row"><input className="field" placeholder="Contractor" aria-label="Contractor" value={who} onChange={(e) => setWho(e.target.value)} /></div>}

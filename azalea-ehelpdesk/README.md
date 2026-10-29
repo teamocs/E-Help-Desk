@@ -59,6 +59,16 @@ caching and from any rule that blocks the REST API for signed-in users.
 - Look: E-Help Desk > Settings > Look picks the Baguio or Boracay design (default: detected from the site address).
   Fonts (Amaranth, Figtree; SIL OFL, see `assets/fonts/OFL.txt`) are served from the plugin.
 
+## Customising lists
+
+Owners and managers (capability `azl_manage_lists`, added by the 0.3.0 role upgrade; administrators too) edit the
+hotel's own lists in the desk: Settings > Lists. Departments, request types, bundles, hold reasons, job titles and
+work-order findings live in the option `azl_catalog` (JSON, seeded from `Azl_Rules` on first read) and reach every
+phone with the next poll. Keys never change; a department or hold reason that records use can be archived (hidden
+from new choices, old records keep its name) but not deleted. A department's `repairs` flag ("Handles repairs") decides
+whether its items can be escalated to a work order; while work orders are open, one active department must keep it. REST: `GET /catalog`, `PUT /catalog/<list>`
+`{items, baseRev}` (409 `azl_stale` when someone saved first, 409 `azl_in_use`, 400 `azl_invalid`).
+
 ## Update
 
 Install the new zip over the old one (wp-admin offers "Replace current with uploaded"), or

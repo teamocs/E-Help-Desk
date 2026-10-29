@@ -59,11 +59,11 @@ test(
 	function () {
 		cast();
 		$r = $GLOBALS['azl_wp']['roles'];
-		eq( array( 'read' => false, 'azl_use_desk' => true, 'azl_act_directly' => true, 'azl_manage_staff' => true, 'azl_manage_accounts' => true ), $r['azl_owner']->capabilities );
-		eq( array( 'read' => false, 'azl_use_desk' => true, 'azl_act_directly' => true, 'azl_manage_staff' => true ), $r['azl_manager']->capabilities );
+		eq( array( 'read' => false, 'azl_use_desk' => true, 'azl_act_directly' => true, 'azl_manage_staff' => true, 'azl_manage_accounts' => true, 'azl_manage_lists' => true ), $r['azl_owner']->capabilities );
+		eq( array( 'read' => false, 'azl_use_desk' => true, 'azl_act_directly' => true, 'azl_manage_staff' => true, 'azl_manage_lists' => true ), $r['azl_manager']->capabilities );
 		eq( array( 'read' => false, 'azl_use_desk' => true, 'azl_act_directly' => true ), $r['azl_supervisor']->capabilities );
 		eq( array( 'read' => false, 'azl_use_desk' => true ), $r['azl_device']->capabilities );
-		foreach ( array( 'azl_use_desk', 'azl_act_directly', 'azl_manage_staff', 'azl_manage_settings', 'azl_manage_accounts' ) as $cap ) {
+		foreach ( array( 'azl_use_desk', 'azl_act_directly', 'azl_manage_staff', 'azl_manage_settings', 'azl_manage_accounts', 'azl_manage_lists' ) as $cap ) {
 			ok( true === $r['administrator']->capabilities[ $cap ], "administrator has $cap" );
 		}
 		$matrix = array(

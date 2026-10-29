@@ -1,5 +1,5 @@
 import type { CleanTask, Item, ItemStatus, Request, Seed, WorkOrder } from './types';
-import { PRESETS } from './rules';
+import { SEED_CATALOG } from './catalog';
 
 /** Synthetic demo data for a hotel. Pure: every time is relative to `now`. */
 export function buildSeed(now: number): Seed {
@@ -7,12 +7,12 @@ export function buildSeed(now: number): Seed {
   const min = (m: number) => now - m * MIN;
   const ev = (m: number, by: string, what: string) => ({ at: min(m), by, what });
   const P = (key: string) => {
-    const p = PRESETS.find((x) => x.key === key);
+    const p = SEED_CATALOG.requestTypes.find((x) => x.key === key);
     if (!p) throw new Error(`Unknown preset: ${key}`);
     return p;
   };
 
-  // Item from a preset. Name, dept and slaMin copy from PRESETS unless overridden.
+  // Item from a request type. Name, dept and slaMin copy from the factory list unless overridden.
   const mk = (id: string, rid: string, key: string, status: ItemStatus, c: number, extra: Partial<Item> = {}): Item => {
     const p = P(key);
     return {

@@ -13,6 +13,10 @@ const NAMES = {
   undo: "ArrowUUpLeft", siren: "Siren", user: "UserSwitch", list: "List", hand: "Handshake", bell: "Bell",
   printer: "Printer", info: "Info", home: "HouseLine", bolt: "Lightning", sun: "Sun", device: "DeviceMobile",
   waves: "Waves", signout: "SignOut", backspace: "Backspace", star: "Star",
+  // Request-type icons a hotel can pick (REQUEST_ICONS in src/domain/catalog.ts) and the list editor's arrows.
+  spa: "FlowerLotus", shirt: "TShirt", key: "Key", car: "Car", suitcase: "Suitcase", food: "ForkKnife", coffee: "Coffee",
+  firstaid: "FirstAid", phone: "Phone", trash: "Trash", plug: "Plug", bug: "Bug", pool: "SwimmingPool", baby: "Baby",
+  up: "CaretUp", down: "CaretDown",
 };
 
 const require = createRequire(import.meta.url);

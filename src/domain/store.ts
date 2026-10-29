@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { buildSeed } from './seed';
-import { BUNDLES, HAZARDS, PRESETS, STAFF, detectSafety, hubUp, isOpen, pad } from './rules';
+import { HAZARDS, STAFF, detectSafety, hubUp, isOpen, pad } from './rules';
+import { SEED_CATALOG, canEscalate, isCatalog, type Catalog } from './catalog';
 import { haptic, hapticsConfig, tone } from '../lib/haptics';
 import type { Hazard, HoldReason, Item, Incident, Prefs, State, Toast, WorkOrder } from './types';
 import type { Snapshot } from './contract';
@@ -37,6 +38,7 @@ export function initialState(now = Date.now()): State {
   return {
     now,
     me: null,
+    catalog: SEED_CATALOG,
     staff: STAFF,
     requests: seed.requests,
     items: seed.items,
@@ -99,6 +101,8 @@ export const ui = createStore<UI>({ screen: 'lock', tab: 'requests', sheet: null
 export function useUI<T>(sel: (s: UI) => T): T {
   return useSyncExternalStore(ui.sub, () => sel(ui.get()));
 }
+/** Owners and managers edit the hotel's lists (the server's azl_manage_lists); supervisors and shared phones only read them. */
+export const canEditLists = (role: AccountRole) => role === 'owner' || role === 'manager';
 export const setUI = (p: Partial<UI>) => ui.set((s) => ({ ...s, ...p }));
 export const go = (tab: Tab) => setUI({ tab, selItem: undefined, selWo: undefined, sheet: null });
 export const openComposer = (seed?: UI['composerSeed']) => setUI({ sheet: 'composer', composerSeed: seed });
@@ -210,11 +214,16 @@ export interface LogInput {
   vip?: boolean;
 }
 
+/** The hotel's active request type or bundle with this key (archived ones are not offered for new work). */
+const activeType = (cat: Catalog, key: string) => cat.requestTypes.find((x) => x.key === key && x.active);
+const activeBundle = (cat: Catalog, key?: string) => cat.bundles.find((x) => x.key === key && x.active);
+
 export function logRequest(o: LogInput): string {
   const reqId = nid('r');
   const refs: string[] = [reqId];
-  const presets = (o.presets ?? []).filter((k) => PRESETS.some((x) => x.key === k));
-  const bundle = BUNDLES.find((x) => x.key === o.bundle);
+  const cat = app.get().catalog;
+  const presets = (o.presets ?? []).filter((k) => activeType(cat, k));
+  const bundle = activeBundle(cat, o.bundle);
   const itemIds = [...presets.map(() => nid('i')), ...(bundle ? bundle.parts.map(() => nid('i')) : [])];
   let next = 0;
   commit(`Log request, room ${o.room}`, (s) => {
@@ -228,14 +237,13 @@ export function logRequest(o: LogInput): string {
       items[id] = { id, requestId: reqId, name, qty: 1, dept, status: 'new', createdAt: s.now, heldMs: 0, slaMin, dependsOn, events: [ev(s, 'Logged')] };
       return id;
     };
-    for (const k of o.presets ?? []) {
-      const p = PRESETS.find((x) => x.key === k);
+    for (const k of presets) {
+      const p = activeType(cat, k);
       if (p) mk(p.label, p.dept, p.slaMin);
     }
-    const b = BUNDLES.find((x) => x.key === o.bundle);
-    if (b) {
+    if (bundle) {
       const made: string[] = [];
-      for (const part of b.parts) made.push(mk(part.name, part.dept, part.slaMin, 'after' in part && part.after != null ? made[part.after] : undefined));
+      for (const part of bundle.parts) made.push(mk(part.name, part.dept, part.slaMin, part.after != null ? made[part.after] : undefined));
     }
     return {
       ...s,
@@ -247,13 +255,14 @@ export function logRequest(o: LogInput): string {
       items: { ...s.items, ...items },
     };
   }, refs);
-  send({ type: 'logRequest', requestId: reqId, itemIds, room: o.room, presets, bundle: o.bundle, remarks: o.remarks, later: o.later, vip: o.vip });
+  send({ type: 'logRequest', requestId: reqId, itemIds, room: o.room, presets, bundle: bundle?.key, remarks: o.remarks, later: o.later, vip: o.vip });
   return reqId;
 }
 
 export function completeRequest(reqId: string, presetKeys: string[]) {
   const refs = [reqId];
-  const presets = presetKeys.filter((k) => PRESETS.some((x) => x.key === k));
+  const cat = app.get().catalog;
+  const presets = presetKeys.filter((k) => activeType(cat, k));
   const itemIds = presets.map(() => nid('i'));
   let next = 0;
   commit('Finish logged request', (s) => {
@@ -262,7 +271,7 @@ export function completeRequest(reqId: string, presetKeys: string[]) {
     const items: Record<string, Item> = {};
     const ids: string[] = [];
     for (const k of presets) {
-      const p = PRESETS.find((x) => x.key === k);
+      const p = activeType(cat, k);
       if (!p) continue;
       const id = itemIds[next++];
       ids.push(id);
@@ -361,8 +370,8 @@ export function transfer(id: string, dept: Item['dept']) {
 export function escalate(id: string): boolean {
   const s0 = app.get();
   const it = s0.items[id];
-  if (!it || !['engineering', 'it'].includes(it.dept) || !['on_site', 'on_hold'].includes(it.status)) {
-    toast('Only on-site Engineering or IT items can become work orders.', 'warn');
+  if (!it || !canEscalate(it.dept, s0.catalog) || !['on_site', 'on_hold'].includes(it.status)) {
+    toast('Only on-site items of a department that handles repairs can become work orders.', 'warn');
     return false;
   }
   const woId = nid('wo');
@@ -511,6 +520,8 @@ export function applySnapshot(snap: Snapshot, member?: State['staff'][number]) {
   app.set((s) => ({
     ...s,
     now: Date.now(),
+    // A server without lists (an older plugin) keeps the factory lists.
+    catalog: isCatalog(snap.catalog) ? snap.catalog : SEED_CATALOG,
     staff: member ? [...snap.staff, member] : snap.staff,
     requests: snap.requests,
     items: snap.items,
@@ -520,6 +531,11 @@ export function applySnapshot(snap: Snapshot, member?: State['staff'][number]) {
     handover: snap.handover,
     seq: snap.seq,
   }));
+}
+
+/** A list editor saved: every screen follows at once (the next snapshot carries the same lists). */
+export function setCatalog(catalog: Catalog) {
+  if (isCatalog(catalog)) app.set((s) => ({ ...s, catalog }));
 }
 
 /* ---------- selectors ---------- */

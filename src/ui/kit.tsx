@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { haptic, type Haptic } from '../lib/haptics';
 import { springs, motionTokens } from '../lib/motion';
 import { useApp, useUI } from '../domain/store';
-import { DEPTS } from '../domain/rules';
+import { deptLabel, deptShort } from '../domain/catalog';
 import type { Dept, Staff } from '../domain/types';
 import { ICONS } from './icons';
 
@@ -136,7 +136,11 @@ export function Empty({ icon, text, action, onAction }: { icon: string; text: Re
 }
 
 export const Pill = ({ tone = '', children }: { tone?: '' | 'ok' | 'warn' | 'bad' | 'accent' | 'gold'; children: ReactNode }) => <span className={`pill ${tone}`}>{children}</span>;
-export const DeptChip = ({ dept }: { dept: Dept }) => <span className={`dept dept-${dept}`} title={DEPTS[dept].label}>{DEPTS[dept].short}</span>;
+/** A department badge from the hotel's lists. Archived departments keep their name; an unknown key shows as itself. */
+export function DeptChip({ dept }: { dept: Dept }) {
+  const cat = useApp((s) => s.catalog);
+  return <span className={`dept dept-${dept}`} title={deptLabel(dept, cat)}>{deptShort(dept, cat)}</span>;
+}
 export const Avatar = ({ staff, large }: { staff?: Pick<Staff, 'initials'>; large?: boolean }) => (
   <span className={`avatar ${large ? 'lg' : ''}`} aria-hidden="true">{staff?.initials ?? '?'}</span>
 );

@@ -1,13 +1,7 @@
-import type { Dept, Hazard, Item, Net, Staff } from './types';
+import type { Hazard, Item, Net, Staff } from './types';
 
-export const DEPTS: Record<Dept, { label: string; short: string }> = {
-  housekeeping: { label: 'Housekeeping', short: 'HK' },
-  engineering: { label: 'Engineering', short: 'ENG' },
-  it: { label: 'IT', short: 'IT' },
-  fnb: { label: 'Food & Beverage', short: 'F&B' },
-  frontdesk: { label: 'Front Desk', short: 'FD' },
-  security: { label: 'Security', short: 'SEC' },
-};
+// Departments, request types, bundles and hold reasons are the hotel's own lists now: see catalog.ts.
+// What stays here is fixed because logic depends on it (hazards and safety words, statuses, the SLA clock).
 
 export const STAFF: Staff[] = [
   { id: 's-maria', name: 'Maria Santos', initials: 'MS', role: 'hdo', title: 'Head Desk Officer', dept: 'frontdesk', onShift: true },
@@ -21,45 +15,6 @@ export const STAFF: Staff[] = [
 ];
 
 export const ROLE_LABEL = { hdo: 'Desk officer', staff: 'Staff', supervisor: 'Supervisor', manager: 'Duty manager', owner: 'Owner' } as const;
-
-export interface Preset { key: string; label: string; dept: Dept; slaMin: number; icon: string }
-
-export const PRESETS: Preset[] = [
-  { key: 'towels', label: 'Extra towels', dept: 'housekeeping', slaMin: 10, icon: 'towel' },
-  { key: 'pillow', label: 'Extra pillow', dept: 'housekeeping', slaMin: 10, icon: 'bed' },
-  { key: 'toiletries', label: 'Toiletries', dept: 'housekeeping', slaMin: 10, icon: 'drop' },
-  { key: 'clean', label: 'Room cleaning', dept: 'housekeeping', slaMin: 30, icon: 'broom' },
-  { key: 'inspection', label: 'Checkout inspection', dept: 'housekeeping', slaMin: 25, icon: 'check' },
-  { key: 'ac', label: 'AC not cold', dept: 'engineering', slaMin: 45, icon: 'snow' },
-  { key: 'bulb', label: 'Light bulb', dept: 'engineering', slaMin: 30, icon: 'bulb' },
-  { key: 'hotwater', label: 'No hot water', dept: 'engineering', slaMin: 30, icon: 'flame' },
-  { key: 'wifi', label: 'Wi-Fi issue', dept: 'it', slaMin: 20, icon: 'wifi' },
-  { key: 'tv', label: 'TV not working', dept: 'it', slaMin: 20, icon: 'tv' },
-  { key: 'water', label: 'Bottled water', dept: 'fnb', slaMin: 10, icon: 'bottle' },
-  { key: 'tray', label: 'Tray pickup', dept: 'fnb', slaMin: 15, icon: 'tray' },
-  { key: 'late', label: 'Late checkout', dept: 'frontdesk', slaMin: 15, icon: 'clock' },
-  { key: 'noise', label: 'Noise complaint', dept: 'security', slaMin: 10, icon: 'ear' },
-];
-
-export const BUNDLES = [
-  {
-    key: 'leak',
-    label: 'Leak',
-    hint: 'Engineering fixes the source, Housekeeping cleans up after',
-    parts: [
-      { name: 'Leak: fix source', dept: 'engineering' as Dept, slaMin: 20 },
-      { name: 'Leak: clean up', dept: 'housekeeping' as Dept, slaMin: 25, after: 0 },
-    ],
-  },
-];
-
-export const HOLD_REASONS = {
-  parts: 'Waiting for parts',
-  no_access: 'No access to room',
-  dnd: 'Guest on Do Not Disturb',
-  vendor: 'Waiting for vendor',
-  guest_declined: 'Guest declined for now',
-} as const;
 
 export const HAZARDS: Record<Hazard, { label: string; call: string }> = {
   smoke: { label: 'Smoke or fire', call: 'Leave the area. Call the fire line and the front desk now.' },

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
-import { ago, DEPTS, isOpen, sla } from '../domain/rules';
+import { deptLabel } from '../domain/catalog';
+import { ago, isOpen, sla } from '../domain/rules';
 import { go, useApp } from '../domain/store';
-import type { Dept } from '../domain/types';
 import { Empty, Group, Pill, Row, Screen } from '../ui/kit';
 
 /** One shift, as in Handover. */
@@ -15,6 +15,7 @@ export function Insights() {
   const wos = useApp((s) => s.wos);
   const cleaning = useApp((s) => s.cleaning);
   const now = useApp((s) => s.now);
+  const catalog = useApp((s) => s.catalog);
 
   const all = Object.values(items);
   const open = all.filter(isOpen);
@@ -26,7 +27,9 @@ export function Insights() {
 
   const rows = useMemo(() => {
     const list = Object.values(items);
-    return (Object.keys(DEPTS) as Dept[])
+    // The hotel's departments in their order (archived ones too, while they have items), then any unknown key on old records.
+    const keys = [...new Set([...catalog.departments.map((d) => d.key), ...list.map((i) => i.dept)])];
+    return keys
       .map((d) => {
         const its = list.filter((i) => i.dept === d);
         const acked = its.filter((i) => i.ackAt);
@@ -36,7 +39,7 @@ export function Insights() {
         return { d, n: its.length, relay: pct(relayOk, acked.length), comp: pct(doneOk, done.length) };
       })
       .filter((r) => r.n > 0);
-  }, [items]);
+  }, [items, catalog]);
 
   const tiles: [string, number, string][] = [
     ['Tickets logged this shift', logged, ''],
@@ -67,7 +70,7 @@ export function Insights() {
             <div className="bars">
               {rows.map((r) => (
                 <div key={r.d}>
-                  <div className="t-head" style={{ marginBottom: 6 }}>{DEPTS[r.d].label} <span className="t-foot c2" style={{ fontWeight: 400 }}>· {r.n} item{r.n === 1 ? '' : 's'}</span></div>
+                  <div className="t-head" style={{ marginBottom: 6 }}>{deptLabel(r.d, catalog)} <span className="t-foot c2" style={{ fontWeight: 400 }}>· {r.n} item{r.n === 1 ? '' : 's'}</span></div>
                   {([['Relay', r.relay], ['Completion', r.comp]] as const).map(([l, v]) => (
                     <div key={l} className="barline" style={{ marginBottom: 4 }}>
                       <span className="t-sub c2">{l}</span>
@@ -85,7 +88,7 @@ export function Insights() {
       {holds.length > 0 && (
         <Group title="Held longest" note="Each department head reviews these. An item on hold never silently expires.">
           {holds.slice(0, 5).map((i) => (
-            <Row key={i.id} icon="hourglass" tint="var(--warn)" title={<span>Room {requests.find((r) => r.id === i.requestId)?.room}: {i.name}</span>} sub={`${DEPTS[i.dept].label} head owns this`} trailing={<Pill tone="warn">{ago(now - (i.holdSince ?? now))}</Pill>} />
+            <Row key={i.id} icon="hourglass" tint="var(--warn)" title={<span>Room {requests.find((r) => r.id === i.requestId)?.room}: {i.name}</span>} sub={`${deptLabel(i.dept, catalog)} head owns this`} trailing={<Pill tone="warn">{ago(now - (i.holdSince ?? now))}</Pill>} />
           ))}
         </Group>
       )}

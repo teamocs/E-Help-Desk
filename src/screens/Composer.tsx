@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { BUNDLES, HAZARDS, PRESETS, detectSafety } from '../domain/rules';
+import { activeOf } from '../domain/catalog';
+import { HAZARDS, detectSafety } from '../domain/rules';
 import { logRequest, raiseSafety, setUI, toast, ui, useApp, useUI } from '../domain/store';
 import { haptic, tone } from '../lib/haptics';
 import { springs } from '../lib/motion';
@@ -10,11 +11,14 @@ import { Sheet } from '../ui/sheet';
 function Body() {
   const seed = useUI((s) => s.composerSeed);
   const requests = useApp((s) => s.requests);
+  const catalog = useApp((s) => s.catalog);
+  const types = useMemo(() => activeOf(catalog.requestTypes), [catalog]);
+  const bundles = useMemo(() => activeOf(catalog.bundles), [catalog]);
   // The rooms of the latest tickets, newest first, for one-tap repeat requests.
   const recent = useMemo(() => [...new Set([...requests].sort((a, b) => b.createdAt - a.createdAt).map((r) => r.room))].slice(0, 5), [requests]);
   const [room, setRoom] = useState(seed?.room ?? '');
   const [vip, setVip] = useState(false);
-  const [presets, setPresets] = useState<string[]>(seed?.preset ? [seed.preset] : []);
+  const [presets, setPresets] = useState<string[]>(seed?.preset && types.some((t) => t.key === seed.preset) ? [seed.preset] : []);
   const [bundle, setBundle] = useState<string | undefined>();
   const [remarks, setRemarks] = useState(seed?.text ?? '');
 
@@ -69,18 +73,24 @@ function Body() {
 
       <Group title="What they need">
         <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-          {BUNDLES.map((b) => (
+          {types.length === 0 && bundles.length === 0 && <span className="t-sub c2">No request types yet. A manager adds them in Settings, Lists. You can still log the room now.</span>}
+          {bundles.map((b) => (
             <button key={b.key} type="button" className="chip" style={{ background: bundle === b.key ? undefined : 'var(--accent-soft)', color: bundle === b.key ? undefined : 'var(--accent-strong)' }} aria-pressed={bundle === b.key} onClick={() => { haptic('medium'); setBundle(bundle === b.key ? undefined : b.key); }} title={b.hint}>
               <Icon name="bolt" size={16} weight="fill" /> {b.label} bundle
             </button>
           ))}
-          {PRESETS.map((p) => (
+          {types.map((p) => (
             <button key={p.key} type="button" className="chip" aria-pressed={presets.includes(p.key)} onClick={() => { haptic('select'); setPresets((x) => (x.includes(p.key) ? x.filter((k) => k !== p.key) : [...x, p.key])); }}>
               <Icon name={p.icon} size={16} /> {p.label}
             </button>
           ))}
         </div>
-        {bundle && <p className="row t-foot c2" style={{ margin: 0 }}>{BUNDLES.find((b) => b.key === bundle)?.hint}. The cleanup waits until the fix is done.</p>}
+        {(() => {
+          const b = bundles.find((x) => x.key === bundle);
+          if (!b) return null;
+          const waits = b.parts.some((p) => p.after != null);
+          return <p className="row t-foot c2" style={{ margin: 0 }}>{[b.hint, waits ? 'Later steps wait until the earlier ones are done.' : ''].filter(Boolean).join('. ').replace(/\.\./g, '.')}</p>;
+        })()}
       </Group>
 
       <Group title="Remark (optional)" note="Safety words in English, Tagalog and Bikol are checked on this device, with or without internet.">

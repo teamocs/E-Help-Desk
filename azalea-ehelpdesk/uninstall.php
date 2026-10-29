@@ -48,7 +48,7 @@ if ( class_exists( 'Azl_Caps' ) && method_exists( 'Azl_Caps', 'uninstall' ) ) {
 	}
 	$azl_admin = get_role( 'administrator' );
 	if ( $azl_admin ) {
-		foreach ( array( 'azl_use_desk', 'azl_act_directly', 'azl_manage_staff', 'azl_manage_settings', 'azl_manage_accounts' ) as $azl_cap ) {
+		foreach ( array( 'azl_use_desk', 'azl_act_directly', 'azl_manage_staff', 'azl_manage_settings', 'azl_manage_accounts', 'azl_manage_lists' ) as $azl_cap ) {
 			$azl_admin->remove_cap( $azl_cap );
 		}
 	}

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion, useMotionValue, useTransform } from 'motion/react';
+import { swipeHoldReason } from '../domain/catalog';
 import { ago, isBlocked, isOpen, sla } from '../domain/rules';
 import { hold, openComposer, setUI, useApp, useUI } from '../domain/store';
 import type { Item, Request, State } from '../domain/types';
@@ -34,7 +35,9 @@ function TicketRow({ d, selected, pending, now }: { d: RowData; selected: boolea
   const opL = useTransform(x, [0, 60], [0, 1]);
   const opR = useTransform(x, [0, -60], [0, 1]);
   const next = d.primary ? nextStep(d.primary) : null;
-  const canHold = d.primary && ['relayed', 'on_site'].includes(d.primary.status);
+  // Swipe left holds for Do Not Disturb, or the hotel's first active hold reason.
+  const holdReason = useApp((s) => swipeHoldReason(s.catalog));
+  const canHold = !!holdReason && d.primary && ['relayed', 'on_site'].includes(d.primary.status);
   const { req, primary, open } = d;
   const title = req.incomplete && !req.itemIds.length ? 'Add what they need' : primary ? primary.name : d.items[0]?.name ?? 'Closed';
   const more = open.length > 1 ? ` +${open.length - 1}` : '';
@@ -82,7 +85,7 @@ function TicketRow({ d, selected, pending, now }: { d: RowData; selected: boolea
         style={{ x }}
         onDragEnd={(_, i) => {
           if (i.offset.x > 90 && next) { haptic('medium'); next.run(); }
-          else if (i.offset.x < -90 && canHold && primary) { haptic('light'); hold(primary.id, 'dnd'); }
+          else if (i.offset.x < -90 && canHold && primary) { haptic('light'); hold(primary.id, holdReason!); }
         }}
       >
         {main}
