@@ -1,131 +1,265 @@
-import { useState } from 'react';
-import { activeOf, deptLabel } from '../domain/catalog';
-import { ago, peso } from '../domain/rules';
-import { assessWo, completeWo, go, holdWo, reopenWo, setUI, startWo, useApp, useUI } from '../domain/store';
-import type { WoStatus } from '../domain/types';
-import { Button, DeptChip, Empty, Group, Icon, Pill, Row, Screen, Segmented } from '../ui/kit';
+// Work Orders (sidebar id workorders), the client prototype's module 5 (docs/MODULES-SPEC.md A.7): the table with
+// filters, "+ Report Work Order", row actions, and the record pane (WoDetail) with its buttons. Forms are in
+// src/modules/workorders/forms.tsx, data and actions in src/modules/workorders/model.ts.
+import { useMemo, useState, type ReactNode } from 'react';
+import { activeDepartments, deptLabel } from '../domain/catalog';
+import { setUI, toast, useApp, useUI } from '../domain/store';
+import type { State } from '../domain/types';
+import { Button, Empty, Icon, Pill, Screen, useTier } from '../ui/kit';
+import { Choice, Field } from '../modules/workorders/form';
+import { WoSheets, nameOf, openWoSheet } from '../modules/workorders/forms';
+import {
+  NO_FILTERS, PRIORITIES, STATUS_LABEL, STATUS_TONE, applyFilters, can, deadline, fmtDay, fmtStamp, openWo, overdue, peso, priorityLabel, priorityTone, reopenWo, startWo,
+  useLevel, useWos, type Filters, type StatusFilter, type Wo, type WoStatus,
+} from '../modules/workorders/model';
 
-const ORDER: WoStatus[] = ['reported', 'assessed', 'in_progress', 'on_hold', 'done'];
-const LABEL: Record<WoStatus, string> = { reported: 'Reported', assessed: 'Assessed', in_progress: 'In progress', on_hold: 'On hold', done: 'Done' };
+const TABS: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: 'All' }, { value: 'open', label: 'Open' }, { value: 'scheduled', label: 'Scheduled' }, { value: 'reported', label: 'Reported' },
+  { value: 'assessed', label: 'Assessed' }, { value: 'in_progress', label: 'In Progress' }, { value: 'on_hold', label: 'On Hold' }, { value: 'done', label: 'Done' },
+];
+
+const select = (id: string) => setUI({ selWo: id, selItem: undefined, sheet: null });
+
+/** The prototype's row actions for a status: Assess, Start, Hold and Complete, Resume, Reopen, Open. */
+function actions(w: Wo, size: 'sm' | 'md' = 'sm'): ReactNode[] {
+  const out: ReactNode[] = [];
+  const b = (key: string, label: string, run: () => void, variant: 'fill' | 'tint' | 'gray' = 'tint', cls = '') => (
+    <Button key={key} size={size === 'sm' ? 'sm' : 'md'} variant={variant} className={cls} aria-label={`${label} ${w.no}`} onClick={run}>{label}</Button>
+  );
+  if (can('openWo', w.status)) out.push(b('open', 'Open', () => { openWo(w.id); toast(`${w.no} opened`, 'success'); }));
+  if (can('assessWo', w.status)) out.push(b('assess', 'Assess', () => openWoSheet('assess', w.id)));
+  if (w.status === 'assessed') out.push(b('start', 'Start', () => { startWo(w.id, false); toast(`${w.no} started`, 'success'); }));
+  if (can('holdWo', w.status)) out.push(b('hold', 'Hold', () => openWoSheet('hold', w.id), 'gray', 'btn-warn'));
+  if (w.status === 'on_hold') out.push(b('resume', 'Resume', () => { startWo(w.id, true); toast(`${w.no} resumed`, 'success'); }));
+  if (w.status === 'in_progress') out.push(b('complete', 'Complete', () => openWoSheet('complete', w.id), 'fill', 'btn-ok'));
+  if (can('reopenWo', w.status)) out.push(b('reopen', 'Reopen', () => { reopenWo(w.id); toast(`${w.no} reopened`, 'success'); }, 'gray'));
+  return out;
+}
+
+const Status = ({ st }: { st: WoStatus }) => <Pill tone={STATUS_TONE[st]}>{STATUS_LABEL[st]}</Pill>;
+const Priority = ({ p }: { p: string }) => <Pill tone={priorityTone(p)}>{priorityLabel(p)}</Pill>;
+
+function Assigned({ w, s }: { w: Wo; s: State }) {
+  if (w.assignType === 'outsource') return <span className="mx-out">Outsourced: {w.contractor ?? 'contractor'}</span>;
+  return <>{w.assignee ? nameOf(s, w.assignee) : <span className="c-muted">—</span>}</>;
+}
+
+function Reporter({ w, s }: { w: Wo; s: State }) {
+  const dept = w.reporterDept ? deptLabel(w.reporterDept, s.catalog) : w.srcItemId ? 'Help desk' : '';
+  return <>{w.reportedBy ? nameOf(s, w.reportedBy) : '—'}{dept && <span className="mx-sub">{dept}</span>}</>;
+}
+
+function Deadline({ w, now }: { w: Wo; now: number }) {
+  const d = deadline(w);
+  if (w.status === 'scheduled') return <span>{fmtDay(w.schedDate)} <span className="c-muted">(scheduled)</span></span>;
+  if (d == null) return <span className="c-muted">—</span>;
+  return overdue(w, now)
+    ? <span className="mx-late"><Icon name="warn" size={16} weight="fill" />{fmtDay(d)}<span className="sr"> (overdue)</span></span>
+    : <span className="nowrap">{fmtDay(d)}</span>;
+}
 
 export function Maintenance() {
-  const wos = useApp((s) => s.wos);
-  const sel = useUI((s) => s.selWo);
-  const open = wos.filter((w) => w.status !== 'done').length;
+  const all = useWos();
+  const s = useApp((x) => x);
+  const sel = useUI((x) => x.selWo);
+  const level = useLevel('workorders');
+  const tier = useTier();
+  const [f, setF] = useState<Filters>(NO_FILTERS);
+  const list = useMemo(() => applyFilters(all, f, s.now), [all, f, s.now]);
+  const counts = useMemo(() => Object.fromEntries(TABS.map((t) => [t.value, applyFilters(all, { ...NO_FILTERS, status: t.value }, s.now).length])), [all, s.now]);
+  const late = all.filter((w) => overdue(w, s.now)).length;
+  const write = level === 'full' || level === 'own';
+  const depts = activeDepartments(s.catalog);
+  const filtered = f.status !== 'all' || f.priority || f.dept || f.overdueOnly;
+
   return (
-    <Screen title="Work orders" subtitle={wos.length ? `${open} open · estimated and actual cost tracked` : 'Repairs that need more than a quick fix'}>
-      {wos.length === 0 && (
-        <Empty icon="wrench" text="No work orders yet. They start from an on-site item of a department that handles repairs: open the ticket and choose Escalate." action="Go to requests" onAction={() => go('requests')} />
+    <Screen title="Work Orders" subtitle="Maintenance">
+      {write && (
+        <div className="mx-actions">
+          <Button icon="plus" onClick={() => openWoSheet('report')}>Report Work Order</Button>
+        </div>
       )}
-      {ORDER.map((st) => {
-        const ws = wos.filter((w) => w.status === st);
-        if (!ws.length) return null;
-        return (
-          <Group key={st} title={LABEL[st]}>
-            {ws.map((w) => (
-              <button key={w.id} type="button" className="ticket" style={{ gridTemplateColumns: 'auto 1fr auto' }} aria-current={sel === w.id} onClick={() => setUI({ selWo: w.id, selItem: undefined, sheet: null })}>
-                <span className="room" style={{ minWidth: '3.4rem', fontSize: '0.8rem' }}>{w.no.replace('WO-', '')}</span>
-                <span style={{ minWidth: 0 }}>
-                  <span className="t-head ellip" style={{ display: 'block' }}>{w.desc}</span>
-                  <span className="t-foot c2 ellip" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>{w.loc} <DeptChip dept={w.dept} />{w.srcItemId && <Pill tone="accent">from ticket</Pill>}</span>
-                </span>
-                <span style={{ textAlign: 'right' }}>
-                  {w.priority === 'high' && <Pill tone="bad">High</Pill>}
-                  <span className="t-foot c2" style={{ display: 'block', marginTop: 4 }}>{peso(w.actualCost ?? w.estCost)}</span>
-                </span>
+
+      {all.length === 0 ? (
+        <Empty icon="wrench" text={write ? 'No work orders yet. Report one here, or escalate an on-site request item of a department that handles repairs.' : 'No work orders yet.'} />
+      ) : (
+        <>
+          <div className="mx-filters">
+            <div className="mx-tabs" role="group" aria-label="Filter by status">
+              {TABS.map((t) => (
+                <button key={t.value} type="button" className="chip" aria-pressed={f.status === t.value} onClick={() => setF((x) => ({ ...x, status: t.value }))}>
+                  {t.label} <span className="n">{counts[t.value]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="mx-selects">
+              <Field label="Priority">{(p) => <Choice {...p} value={f.priority} onChange={(v) => setF((x) => ({ ...x, priority: v }))} options={[{ value: '', label: 'Any priority' }, ...PRIORITIES.map((x) => ({ value: x, label: priorityLabel(x) }))]} />}</Field>
+              <Field label="Department">{(p) => <Choice {...p} value={f.dept} onChange={(v) => setF((x) => ({ ...x, dept: v }))} options={[{ value: '', label: 'All departments' }, ...depts.map((d) => ({ value: d.key, label: d.label }))]} />}</Field>
+              <button type="button" className="chip" aria-pressed={f.overdueOnly} onClick={() => setF((x) => ({ ...x, overdueOnly: !x.overdueOnly }))}>
+                <Icon name="warn" size={18} /> Overdue <span className="n">{late}</span>
               </button>
-            ))}
-          </Group>
-        );
-      })}
-      {wos.length > 0 && <p className="t-foot c2" style={{ padding: '12px 4px' }}>Tickets become work orders from the Escalate button on an on-site item of a department that handles repairs (Settings, Lists, Departments).</p>}
+              {filtered && <Button size="sm" variant="plain" onClick={() => setF(NO_FILTERS)}>Clear filters</Button>}
+            </div>
+          </div>
+          <p className="mx-count t-sub" role="status" aria-live="polite">{list.length === all.length ? `${all.length} work order${all.length === 1 ? '' : 's'}` : `Showing ${list.length} of ${all.length}`}</p>
+
+          {list.length === 0 ? (
+            <Empty icon="wrench" text="No work orders match these filters." action="Clear filters" onAction={() => setF(NO_FILTERS)} />
+          ) : tier === 'phone' ? (
+            <ul className="mx-cards" aria-label="Work orders">
+              {list.map((w) => (
+                <li key={w.id} className="mx-card" aria-current={sel === w.id}>
+                  <button type="button" className="mx-card-open" onClick={() => select(w.id)} aria-label={`${w.no}, ${STATUS_LABEL[w.status]}: ${w.desc}. Open details`}>
+                    <span className="mx-card-top"><span className="t-head">{w.no}</span><Status st={w.status} /></span>
+                    <span className="t-body">{w.desc}</span>
+                  </button>
+                  <dl>
+                    <dt>Where</dt><dd>{w.area}{w.loc ? ` · ${w.loc}` : ''}</dd>
+                    <dt>Priority</dt><dd><Priority p={w.priority} /></dd>
+                    <dt>Dept</dt><dd>{deptLabel(w.dept, s.catalog)}</dd>
+                    <dt>Assigned</dt><dd><Assigned w={w} s={s} /></dd>
+                    <dt>Reporter</dt><dd><Reporter w={w} s={s} /></dd>
+                    <dt>Deadline</dt><dd><Deadline w={w} now={s.now} /></dd>
+                  </dl>
+                  {write && actions(w).length > 0 && <div className="act">{actions(w)}</div>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="dt" role="region" aria-label="Work orders" tabIndex={0}>
+              <table>
+                <thead>
+                  <tr>{['WO#', 'Area', 'Location', 'Description', 'Pri', 'Dept', 'Assigned', 'Reporter', 'Deadline', 'Status', ...(write ? ['Action'] : [])].map((h) => <th key={h} scope="col">{h}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {list.map((w) => (
+                    <tr key={w.id} aria-current={sel === w.id} onClick={(e) => { if (!(e.target as HTMLElement).closest('button')) select(w.id); }}>
+                      <td><button type="button" className="no" onClick={() => select(w.id)} aria-label={`${w.no}: open details`}>{w.no}</button></td>
+                      <td className="nowrap">{w.area}</td>
+                      <td>{w.loc || <span className="c-muted">—</span>}</td>
+                      <td><div className="desc" title={w.desc}>{w.desc}</div></td>
+                      <td><Priority p={w.priority} /></td>
+                      <td className="nowrap">{deptLabel(w.dept, s.catalog)}</td>
+                      <td><Assigned w={w} s={s} /></td>
+                      <td><Reporter w={w} s={s} /></td>
+                      <td><Deadline w={w} now={s.now} /></td>
+                      <td><Status st={w.status} /></td>
+                      {write && <td><div className="act">{actions(w)}</div></td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+      <WoSheets />
     </Screen>
   );
 }
 
-export function WoDetail({ id }: { id: string }) {
-  const wo = useApp((s) => s.wos.find((w) => w.id === id));
-  const staff = useApp((s) => s.staff);
-  const now = useApp((s) => s.now);
-  const catalog = useApp((s) => s.catalog);
-  const [note, setNote] = useState('');
-  const [kind, setKind] = useState<'inhouse' | 'outsource'>('inhouse');
-  const [who, setWho] = useState('');
-  const [est, setEst] = useState('');
-  const [actual, setActual] = useState('');
-  if (!wo) return <p className="c2">This work order is no longer available.</p>;
-  const step = wo.status === 'on_hold' ? 2 : ORDER.indexOf(wo.status);
-  const name = (i: string) => staff.find((p) => p.id === i)?.name ?? i;
-  const max = Math.max(wo.estCost ?? 0, wo.actualCost ?? 0, 1);
+const Item = ({ k, children }: { k: string; children: ReactNode }) => <div><dt>{k}</dt><dd>{children}</dd></div>;
 
+/** The record pane: everything the prototype's drawer shows, the progress notes and the audit trail, then the buttons. */
+export function WoDetail({ id }: { id: string }) {
+  const w = useWos().find((x) => x.id === id);
+  const s = useApp((x) => x);
+  const level = useLevel('workorders');
+  if (!w) return <p className="c2">This work order is no longer available.</p>;
+  const write = level === 'full' || level === 'own';
+  const src = w.srcItemId ? s.items[w.srcItemId] : undefined;
+  const ticket = src ? s.requests.find((r) => r.id === src.requestId) : undefined;
+  const late = overdue(w, s.now);
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <h2 className="t-title2">{wo.no}</h2>
-        <Pill tone={wo.status === 'done' ? 'ok' : wo.status === 'on_hold' ? 'warn' : 'accent'}>{LABEL[wo.status]}</Pill>
-        {wo.priority === 'high' && <Pill tone="bad">High priority</Pill>}
+      <div className="wo-head">
+        <h2 className="t-title2">{w.no}{w.loc ? ` · ${w.loc}` : ''}</h2>
+        <Status st={w.status} />
+        {late && <Pill tone="bad">Overdue</Pill>}
       </div>
-      <p className="t-body" style={{ margin: '6px 0 12px' }}>{wo.desc}</p>
-      <div className="stepper" role="img" aria-label={`Stage ${Math.min(step, 3) + 1} of 4: ${LABEL[wo.status]}`}>
-        {[0, 1, 2, 3].map((i) => <span key={i} className={i <= Math.min(step, 3) ? 'on' : ''} />)}
-      </div>
-      <p className="t-cap c2" style={{ display: 'flex', justifyContent: 'space-between', margin: '6px 0 0' }}><span>Reported</span><span>Assessed</span><span>In progress</span><span>Done</span></p>
 
-      <Group title="Details">
-        <Row icon="home" title={wo.loc} sub={wo.area} />
-        <Row icon="user" title={`Reported by ${name(wo.reportedBy)}`} sub={`Entered by ${name(wo.encodedBy)} · ${ago(now - wo.createdAt)} ago`} />
-        {wo.assignType && <Row icon="wrench" title={wo.assignType === 'outsource' ? `Outsourced to ${wo.contractor ?? 'contractor'}` : 'Done in-house'} sub={deptLabel(wo.dept, catalog)} />}
-        {wo.assessment && <Row icon="clip" title={wo.assessment} sub="Assessment" />}
-      </Group>
+      <section className="wo-sec" aria-label="Work order">
+        <dl className="wo-grid">
+          <Item k="Area">{w.area}</Item>
+          <Item k="Location">{w.loc || '—'}</Item>
+          <Item k="Priority"><Priority p={w.priority} /></Item>
+          <Item k="Dept">{deptLabel(w.dept, s.catalog)}</Item>
+          <Item k="Assigned"><Assigned w={w} s={s} /></Item>
+          <Item k="Reporter"><Reporter w={w} s={s} /></Item>
+          <Item k="Encoded">{nameOf(s, w.encodedBy)}</Item>
+          <Item k="Requested">{w.requestedDate == null ? '—' : fmtDay(w.requestedDate)}</Item>
+          {w.targetEnd != null && <Item k="Deadline"><Deadline w={w} now={s.now} /></Item>}
+          {w.status === 'scheduled' && <Item k="Scheduled for">{fmtDay(w.schedDate)}</Item>}
+          <Item k="Reported">{fmtStamp(w.createdAt)}</Item>
+        </dl>
+        <p className="wo-box" style={{ marginTop: 10 }}>{w.desc}</p>
+        {ticket && (
+          <p className="t-sub" style={{ margin: '8px 0 0' }}>
+            <Icon name="clip" size={16} /> From request {ticket.ticket}, room {ticket.room}.{' '}
+            <button type="button" className="btn btn-plain btn-sm" onClick={() => setUI({ tab: 'requests', selItem: w.srcItemId, selWo: undefined, sheet: null })}>Open the request</button>
+            <span className="t-foot c2" style={{ display: 'block' }}>Completing this work order closes that request item.</span>
+          </p>
+        )}
+      </section>
 
-      {(wo.estCost != null || wo.actualCost != null) && (
-        <Group title="Cost: estimated vs actual">
-          <div className="row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
-            {([['Estimated', wo.estCost], ['Actual', wo.actualCost]] as const).map(([l, v]) => (
-              <div key={l} className="barline" style={{ gridTemplateColumns: '5.5rem 1fr 5rem' }}>
-                <span className="t-sub c2">{l}</span>
-                <span className="track"><i style={{ width: `${((v ?? 0) / max) * 100}%`, background: l === 'Actual' ? ((v ?? 0) > (wo.estCost ?? 0) ? 'var(--bad)' : 'var(--ok)') : 'var(--fg-3)' }} /></span>
-                <span className="t-sub" style={{ textAlign: 'right' }}>{v == null ? 'Pending' : peso(v)}</span>
-              </div>
-            ))}
+      {w.holdReason && w.status === 'on_hold' && <p className="wo-box warn wo-sec"><b>On hold:</b> {w.holdReason}</p>}
+
+      {w.assessment && (
+        <section className="wo-sec">
+          <h3>Assessment</h3>
+          <p className="wo-box accent" style={{ margin: 0 }}>{w.assessment}</p>
+          <dl className="wo-grid" style={{ marginTop: 8 }}>
+            <Item k="By">{nameOf(s, w.assessedBy)}</Item>
+            <Item k="Date">{fmtStamp(w.assessedAt)}</Item>
+            <Item k="Target">{w.targetStart == null && w.targetEnd == null ? '—' : `${fmtDay(w.targetStart)} → ${fmtDay(w.targetEnd)}`}</Item>
+          </dl>
+        </section>
+      )}
+
+      {(w.estCost != null || w.actualCost != null) && (
+        <section className="wo-sec">
+          <h3>Cost</h3>
+          <div className={`wo-box wo-cost ${w.actualCost != null && w.estCost != null && w.actualCost > w.estCost ? 'warn' : 'ok'}`}>
+            <span>Estimated</span><b>{peso(w.estCost)}</b>
+            <span>Actual</span><b>{peso(w.actualCost)}</b>
           </div>
-        </Group>
+        </section>
       )}
 
-      {wo.status === 'reported' && (
-        <Group title="Assess">
-          {activeOf(catalog.woFindings).length > 0 && (
-            <div className="row" style={{ flexWrap: 'wrap', gap: 8 }}>
-              {activeOf(catalog.woFindings).map((f) => <button key={f.key} type="button" className="chip" aria-pressed={note === f.label} onClick={() => setNote(f.label)}>{f.label}</button>)}
-            </div>
-          )}
-          <div className="row"><input className="field" placeholder="Findings" aria-label="Findings" value={note} onChange={(e) => setNote(e.target.value)} /></div>
-          <div className="row"><Segmented label="Who does the work" value={kind} onChange={setKind} options={[{ value: 'inhouse', label: 'In-house' }, { value: 'outsource', label: 'Outsource' }]} /></div>
-          {kind === 'outsource' && <div className="row"><input className="field" placeholder="Contractor" aria-label="Contractor" value={who} onChange={(e) => setWho(e.target.value)} /></div>}
-          <div className="row"><input className="field" inputMode="numeric" placeholder="Estimated cost (₱)" aria-label="Estimated cost in pesos" value={est} onChange={(e) => setEst(e.target.value.replace(/\D/g, ''))} /></div>
-          <div className="row"><Button block feel="success" disabled={!note || !est} onClick={() => assessWo(wo.id, { assessment: note, assignType: kind, contractor: kind === 'outsource' ? who || 'Contractor' : undefined, estCost: Number(est) })}>Save assessment</Button></div>
-        </Group>
+      {(w.actualStart != null || w.actualEnd != null) && (
+        <section className="wo-sec">
+          <h3>Actual</h3>
+          <dl className="wo-grid">
+            <Item k="Started">{fmtStamp(w.actualStart)}</Item>
+            <Item k="Completed">{fmtStamp(w.actualEnd)}</Item>
+          </dl>
+          {w.completionNotes && <p className="wo-box ok" style={{ marginTop: 8 }}>{w.completionNotes}</p>}
+        </section>
       )}
-      {(wo.status === 'assessed' || wo.status === 'on_hold') && (
-        <div style={{ marginTop: 14 }}><Button block size="lg" feel="medium" onClick={() => startWo(wo.id)}>{wo.status === 'on_hold' ? 'Resume work' : 'Start work'}</Button></div>
-      )}
-      {wo.status === 'in_progress' && (
-        <Group title="Finish">
-          <div className="row"><input className="field" inputMode="numeric" placeholder="Actual cost (₱)" aria-label="Actual cost in pesos" value={actual} onChange={(e) => setActual(e.target.value.replace(/\D/g, ''))} /></div>
-          <div className="row" style={{ gap: 8 }}>
-            <Button variant="gray" onClick={() => holdWo(wo.id)}>Put on hold</Button>
-            <Button block feel="success" disabled={!actual} onClick={() => completeWo(wo.id, Number(actual))}>Complete{wo.srcItemId ? ' and close ticket' : ''}</Button>
-          </div>
-        </Group>
-      )}
-      {wo.status === 'done' && <div style={{ marginTop: 14 }}><Button variant="gray" block icon="undo" onClick={() => reopenWo(wo.id)}>Reopen</Button></div>}
 
-      <Group title="History">
-        <ol className="timeline" style={{ padding: '10px 16px 10px 40px' }}>
-          {wo.audit.map((a, i) => <li key={i} className="t-foot"><span className="c2">{new Date(a.at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span> · {a.what} <span className="c3">· {name(a.by).split(' ')[0]}</span></li>)}
+      <section className="wo-sec">
+        <h3>Updates ({w.updates?.length ?? 0})</h3>
+        {w.updates?.length ? (
+          <ol className="wo-log">
+            {w.updates.map((u, i) => <li key={i}><span className="meta">{fmtStamp(u.at)} · {nameOf(s, u.by)}</span><span className="text">{u.text}</span></li>)}
+          </ol>
+        ) : <p className="t-sub c2" style={{ margin: 0 }}>No progress updates yet.</p>}
+      </section>
+
+      <section className="wo-sec">
+        <h3>Audit trail</h3>
+        <ol className="wo-log wo-audit" tabIndex={0} aria-label="Audit trail">
+          {w.audit.map((a, i) => <li key={i}><span className="meta">{fmtStamp(a.at)} · {nameOf(s, a.by)}</span><span className="text">{a.what}</span></li>)}
         </ol>
-      </Group>
-      {wo.srcItemId && <p className="t-foot c2" style={{ padding: '10px 16px' }}><Icon name="info" size={14} /> Linked to a request item. Completing this work order closes it.</p>}
+      </section>
+
+      {write && (
+        <div className="wo-buttons">
+          <Button variant="gray" icon="note" onClick={() => openWoSheet('edit', w.id)}>Edit</Button>
+          {can('updateWo', w.status) && <Button variant="tint" icon="plus" onClick={() => openWoSheet('update', w.id)}>Update</Button>}
+          {actions(w, 'md')}
+        </div>
+      )}
     </div>
   );
 }

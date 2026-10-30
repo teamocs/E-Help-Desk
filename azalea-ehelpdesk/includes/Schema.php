@@ -18,8 +18,12 @@ defined( 'ABSPATH' ) || exit;
 
 final class Azl_Schema {
 
-	/** 2: azl_updates and the counters for the new ticket numbers (wave 1 of the modules). */
-	const VERSION  = '2';
+	/**
+	 * 2: azl_updates and the counters for the new ticket numbers (wave 1 of the modules).
+	 * 3: Requests parity (wave 2), additive only: requests.hdo, requests.staff_name, requests.source widened to 20
+	 *    (staff_request); items.relayed_by, on_site_at, prev_status, x_kind, x_note, remarks. All nullable.
+	 */
+	const VERSION  = '3';
 	const OPTION   = 'azl_db_version';
 	/** inq, hs, cr, tr: Inquiries I-0001, House Status HS-0001, Crisis cases CR-0001, Transport TR-0001. */
 	const COUNTERS = array( 'ticket', 'wo', 'inc', 'change', 'inq', 'hs', 'cr', 'tr' );
@@ -109,12 +113,14 @@ final class Azl_Schema {
   id char(36) NOT NULL,
   ticket_no int(11) unsigned NOT NULL,
   room varchar(40) NOT NULL,
-  source varchar(10) NOT NULL,
+  source varchar(20) NOT NULL,
   remarks text DEFAULT NULL,
   logged_by char(36) DEFAULT NULL,
   vip tinyint(1) NOT NULL DEFAULT 0,
   incomplete tinyint(1) NOT NULL DEFAULT 0,
   safety_id char(36) DEFAULT NULL,
+  hdo char(36) DEFAULT NULL,
+  staff_name varchar(120) DEFAULT NULL,
   op_id char(36) NOT NULL,
   created_at bigint(20) NOT NULL,
   updated_at bigint(20) NOT NULL,
@@ -144,6 +150,12 @@ final class Azl_Schema {
   x_from char(36) DEFAULT NULL,
   wo_id char(36) DEFAULT NULL,
   st_before_esc varchar(20) DEFAULT NULL,
+  relayed_by char(36) DEFAULT NULL,
+  on_site_at bigint(20) DEFAULT NULL,
+  prev_status varchar(20) DEFAULT NULL,
+  x_kind varchar(10) DEFAULT NULL,
+  x_note varchar(191) DEFAULT NULL,
+  remarks varchar(500) DEFAULT NULL,
   PRIMARY KEY  (id),
   KEY request_id (request_id,created_at),
   KEY open_items (status,created_at),

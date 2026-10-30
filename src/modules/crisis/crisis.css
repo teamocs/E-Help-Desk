@@ -1,0 +1,54 @@
+/* Crisis Mgmt (src/modules/crisis). Calm by design: --bad is kept for live danger (an active safety alert);
+   a case shows its state in its pill (warn active, accent monitoring, ok closed); closed cards recede. */
+
+.cr-first { display: flex; gap: 10px; align-items: flex-start; padding: 0.75rem 1rem; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--sep); }
+.cr-first svg { flex: none; margin-top: 2px; }
+.cr-first b { letter-spacing: 0.01em; }
+.cr-first.compact { padding: 0.5rem 0.75rem; font-size: 0.9375rem; }
+
+.cr-alert { display: grid; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--sep); overflow: hidden; }
+.cr-alert.active { border-color: color-mix(in srgb, var(--bad) 55%, transparent); background: color-mix(in srgb, var(--bad-soft) 45%, var(--surface)); }
+.cr-alert-main { display: grid; gap: 4px; width: 100%; text-align: left; padding: 14px 16px 10px; color: var(--fg); }
+.cr-alert-main:hover { background: var(--fill); }
+.cr-alert-main:focus-visible { outline-offset: -3px; }
+.cr-alert.active .case-open { color: var(--bad); }
+.cr-alert-foot { display: flex; gap: 8px; padding: 0 16px 12px; }
+
+.cr-filters { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.cr-filters .chip { min-height: 2.25rem; font-size: 0.875rem; }
+.cr-none { margin: 4px; }
+
+.cr-card { display: grid; gap: 4px; width: 100%; text-align: left; padding: 12px 16px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--sep); color: var(--fg); }
+.cr-card:hover { background: color-mix(in srgb, var(--fill) 60%, var(--surface)); }
+.cr-card:focus-visible { outline-offset: 2px; }
+.cr-card.resolved { background: color-mix(in srgb, var(--fill) 40%, var(--surface)); }
+.cr-card.resolved .t-head { color: var(--fg-2); }
+.cr-chip { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; padding: 0 8px; border-radius: var(--r-pill); background: var(--fill); color: var(--fg); font-weight: 600; white-space: nowrap; }
+
+.cr-view, .cr-form { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; padding-bottom: 8px; }
+.cr-view select.field, .cr-form select.field { max-width: 100%; min-width: 0; text-overflow: ellipsis; }
+.cr-view-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cr-view-head h3 { margin: 0; }
+.cr-lines { margin: 0; display: grid; gap: 6px; }
+.cr-line { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 8px; }
+.cr-line dt { font-size: 0.875rem; }
+.cr-line dd { margin: 0; overflow-wrap: anywhere; }
+.cr-box { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px 14px; border-radius: var(--r-card); background: var(--fill); }
+.cr-box svg { vertical-align: -3px; }
+.cr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cr-row select.field { flex: 1 1 12rem; width: auto; min-width: 0; }
+.cr-link { margin-top: 6px; }
+.cr-thread { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.cr-thread li { display: grid; gap: 2px; padding: 8px 12px; border-radius: var(--r-input); background: var(--fill); }
+.cr-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.cr-actions .btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+.cr-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 12px 14px; }
+.cr-field { min-width: 0; }
+.cr-field.wide { grid-column: 1 / -1; }
+.cr-error { color: var(--bad); font-weight: 600; }
+
+@media (max-width: 767px) {
+  .cr-line { grid-template-columns: 1fr; gap: 0; }
+  .cr-grid { grid-template-columns: 1fr; }
+}

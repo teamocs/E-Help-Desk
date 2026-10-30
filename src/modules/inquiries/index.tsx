@@ -1,18 +1,19 @@
-import { ComingNext } from '../ComingNext';
-import type { ModuleDef } from '../types';
+import { lazyScreen, type ModuleDef } from '../types';
+import { inquiryBadge } from './data';
+import { InquiryDetail } from './InquiryDetail';
 
-/** Wave 2 replaces this placeholder with the module's own screen (see ../README.md). */
-function Inquiries() {
-  return <ComingNext title="Inquiries" icon="chat" action="New Inquiry" filters={['All', 'Active', 'Done']} line="Questions from in-house guests, callers and checked-out guests, logged and closed within minutes." />;
-}
-
+/**
+ * Inquiries (the client prototype's module 3): questions from in-house guests, outside callers and checked-out
+ * guests, logged and closed within minutes. Badge: active plus noted. The detail pane reuses the selected-record slot
+ * (selItem) the Requests module also uses; it only shows while this module is open.
+ */
 const inquiries: ModuleDef = {
   id: 'inquiries',
   label: 'Inquiries',
   icon: 'chat',
-  // Wave 2: count active plus noted inquiries from moduleData(s, 'inquiries'). Until the module has data the count is 0, shown as the prototype shows it.
-  badge: () => 0,
+  badge: inquiryBadge,
   badgeLabel: 'active',
-  Screen: Inquiries,
+  Screen: lazyScreen(() => import('./Inquiries').then((m) => m.Inquiries)),
+  detail: { title: 'Inquiry', selected: (ui) => ui.selItem, View: InquiryDetail },
 };
 export default inquiries;

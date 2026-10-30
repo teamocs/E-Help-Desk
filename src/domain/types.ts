@@ -42,13 +42,26 @@ export interface Item {
   woId?: string;
   stBeforeEsc?: ItemStatus;
   events: ItemEvent[];
+  /* Requests parity (wave 2, schema 3). All optional: older snapshots and rows have none. */
+  /** Staff id of who relayed it. */
+  relayedBy?: string;
+  /** When someone arrived on site (the Resp timer). */
+  onSiteAt?: number;
+  /** The status before the latest step: what Undo goes back to (see undoTarget in rules.ts). */
+  prevStatus?: ItemStatus;
+  /** How it came from xFrom: moved by a transfer, or a follow-up handed off from a done item. */
+  xKind?: 'transfer' | 'handoff';
+  /** The reason of a transfer or the note of a hand-off. */
+  xNote?: string;
+  remarks?: string;
 }
 
 export interface Request {
   id: string;
   ticket: string;
   room: string;
-  source: 'guest' | 'staff';
+  /** guest or staff_request (New Request); 'staff' is every request logged before wave 2 (read as a guest request). */
+  source: 'guest' | 'staff' | 'staff_request';
   remarks?: string;
   loggedBy: string;
   createdAt: number;
@@ -56,6 +69,12 @@ export interface Request {
   incomplete?: boolean;
   vip?: boolean;
   safetyId?: string;
+  /** Staff id of the help-desk officer (HDO) handling the ticket. */
+  hdo?: string;
+  /** Who asked, for a staff request ("Dela Cruz, Maria"). */
+  staffName?: string;
+  /** The ticket's own history: Logged, Details added, and every Edit ticket change ("Room: 412 → 414"). */
+  events?: ItemEvent[];
 }
 
 export type WoStatus = 'reported' | 'assessed' | 'in_progress' | 'on_hold' | 'done';

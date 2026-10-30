@@ -12,7 +12,7 @@ export default defineConfig({
   plugins: [react()],
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
   build: {
-    outDir: "azalea-ehelpdesk/assets/desk",
+    outDir: process.env.AZL_OUT ?? "azalea-ehelpdesk/assets/desk", // AZL_OUT: a private folder so parallel builds do not overwrite each other
     emptyOutDir: true,
     manifest: "manifest.json",
     sourcemap: false,

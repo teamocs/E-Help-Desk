@@ -392,11 +392,24 @@ function remove_role( $slug ) {
 	unset( $GLOBALS['azl_wp']['roles'][ $slug ] );
 }
 
-/** dbDelta: the real CREATE TABLE text, translated for SQLite. */
+/**
+ * dbDelta: the real CREATE TABLE text, translated for SQLite. Like WordPress, a table that already exists gets the
+ * columns it lacks (ALTER TABLE ADD COLUMN), so an upgrade over existing rows can be tested. Never drops anything.
+ */
 function dbDelta( $queries ) {
+	$pdo = $GLOBALS['wpdb']->pdo;
 	foreach ( (array) $queries as $q ) {
-		foreach ( azl_sqlite_ddl( $q ) as $stmt ) {
-			$GLOBALS['wpdb']->pdo->exec( $stmt );
+		$stmts = azl_sqlite_ddl( $q );
+		preg_match( '/^CREATE TABLE IF NOT EXISTS (\w+) \(\n(.*)\n\)$/s', $stmts[0], $m );
+		$have = array_column( $pdo->query( "PRAGMA table_info($m[1])" )->fetchAll( PDO::FETCH_ASSOC ), 'name' );
+		foreach ( $have ? explode( ",\n", $m[2] ) : array() as $col ) {
+			$name = strtok( trim( $col ), ' ' );
+			if ( ! preg_match( '/^(PRIMARY|UNIQUE)\b/', trim( $col ) ) && ! in_array( $name, $have, true ) ) {
+				$pdo->exec( "ALTER TABLE $m[1] ADD COLUMN " . trim( $col ) );
+			}
+		}
+		foreach ( $stmts as $stmt ) {
+			$pdo->exec( $stmt );
 		}
 	}
 	return array();
@@ -462,6 +475,9 @@ class WP_REST_Response {
 /* ---------- the plugin itself (its main file loads every includes/*.php and adds its hooks) ---------- */
 
 azl_wp_reset();
+// Modules check their CREATE TABLE text when they register, which needs the table prefix: a database exists at load,
+// as in WordPress. Each test still starts from a fresh one (azl_reset).
+$GLOBALS['wpdb'] = new Wpdb_Sqlite();
 require __DIR__ . '/../azalea-ehelpdesk.php';
 if ( ! empty( $GLOBALS['azl_ehd_load_errors'] ) ) {
 	fwrite( STDERR, "Plugin files failed to load:\n  " . implode( "\n  ", $GLOBALS['azl_ehd_load_errors'] ) . "\n" );

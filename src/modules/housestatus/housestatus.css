@@ -1,0 +1,32 @@
+/* House Status and Transport (the two modules share these few rules). The hotel's --azl-* colours come through styles.css. */
+.hs-filters { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.hs-list { margin-top: 12px; }
+.hs-card { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--sep); }
+.hs-card.closed { background: color-mix(in srgb, var(--fill) 55%, var(--surface)); }
+.hs-card.closed .hs-narr { color: var(--fg-2); }
+.hs-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.hs-when { margin-left: auto; }
+.hs-narr { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+.hs-updates { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; }
+.hs-updates li { padding: 8px 12px; border-radius: 8px; background: var(--fill); font: 400 0.875rem/1.4 var(--font); overflow-wrap: anywhere; white-space: pre-line; }
+.hs-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.hs-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.hs-error { color: var(--bad); font-weight: 600; }
+
+/* Transport */
+.tr-wrap { overflow-x: auto; border: 1px solid var(--sep); border-radius: var(--r-card); background: var(--surface); margin-top: 12px; }
+.tr-table { width: 100%; border-collapse: collapse; font: 400 0.9375rem/1.35 var(--font); }
+.tr-table th { text-align: left; padding: 10px 12px; font: 600 0.75rem var(--font); color: var(--fg-2); white-space: nowrap; border-bottom: 1px solid var(--sep); }
+.tr-table td { padding: 8px 12px; vertical-align: middle; border-top: 1px solid var(--sep); }
+.tr-table tbody tr:first-child td { border-top: 0; }
+.tr-table tr.cancelled td { color: var(--fg-2); }
+.tr-no { font-weight: 700; white-space: nowrap; min-height: var(--hit-sm); padding: 0 4px; border-radius: 8px; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--sep); }
+.tr-no:hover { background: var(--fill); }
+.tr-card { display: grid; gap: 6px; width: 100%; padding: 14px 16px; border-radius: var(--r-card); background: var(--surface); border: 1px solid var(--sep); }
+.tr-card.cancelled { background: color-mix(in srgb, var(--fill) 55%, var(--surface)); color: var(--fg-2); }
+.tr-card dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 0; font: 400 0.875rem/1.4 var(--font); }
+.tr-card dt { color: var(--fg-2); }
+.tr-card dd { margin: 0; overflow-wrap: anywhere; }
+.tr-open { display: flex; align-items: center; justify-content: space-between; gap: 8px; text-align: left; width: 100%; min-height: var(--hit-sm); }
+.tr-pair { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+@media (max-width: 420px) { .tr-pair { grid-template-columns: 1fr; } }

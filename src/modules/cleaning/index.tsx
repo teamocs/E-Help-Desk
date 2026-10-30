@@ -1,6 +1,6 @@
 import { lazyScreen, type ModuleDef } from '../types';
 
-/** Cleaning: the existing Housekeeping screen. No badge (the prototype shows none). */
+/** Cleaning: table, Log Cleaning, Schedule Rooms, clock in and out (screens/Housekeeping.tsx). No badge (the prototype shows none). */
 const cleaning: ModuleDef = {
   id: 'cleaning',
   label: 'Cleaning',

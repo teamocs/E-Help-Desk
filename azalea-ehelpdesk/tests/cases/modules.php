@@ -6,14 +6,24 @@
 
 require_once __DIR__ . '/../fixtures/ExampleModule.php';
 
-/** Registers the example module for one test body and always removes it again (the registry outlives a test). */
+/**
+ * Registers the example module ALONE for one test body (the real modules step aside, so these framework tests do
+ * not depend on which modules ship) and always puts the registry back (it outlives a test).
+ */
 function with_example( callable $fn, ?Azl_Module_Example $m = null ): void {
-	$m = $m ?? new Azl_Module_Example();
+	$m     = $m ?? new Azl_Module_Example();
+	$aside = Azl_Modules::all();
+	foreach ( array_keys( $aside ) as $id ) {
+		Azl_Modules::forget( $id );
+	}
 	Azl_Modules::register( $m );
 	try {
 		$fn( $m );
 	} finally {
 		Azl_Modules::forget( 'example' );
+		foreach ( $aside as $mod ) {
+			Azl_Modules::register( $mod );
+		}
 	}
 }
 
@@ -32,7 +42,7 @@ test(
 			function () {
 				Azl_Schema::maybe_upgrade(); // a new module upgrades the database once
 				ok( table_exists( 'example_notes' ), 'module table created' );
-				eq( '2+example@1', get_option( 'azl_db_version' ) );
+				eq( Azl_Schema::VERSION . '+example@1', get_option( 'azl_db_version' ) );
 				eq( 0, Azl_Db::counter( 'ex' ) );
 				$note = id();
 				$c    = array( 'type' => 'addExampleNote', 'noteId' => $note, 'text' => 'Lobby plant <b>wilting</b>', 'opId' => id() );
@@ -78,9 +88,9 @@ test(
 				eq( $data, array( Azl_Db::rows( 'SELECT * FROM ' . Azl_Db::t( 'requests' ) ), Azl_Db::rows( 'SELECT * FROM ' . Azl_Db::t( 'items' ) ), Azl_Db::counter( 'ticket' ) ), 'existing data untouched' );
 				cmd( array( 'type' => 'addExampleNote', 'noteId' => id(), 'text' => 'one' ) );
 				$m->ver = '2'; // the module changed its tables: one more upgrade, which keeps its rows
-				ok( '2+example@2' !== get_option( 'azl_db_version' ), 'version differs' );
+				ok( Azl_Schema::VERSION . '+example@2' !== get_option( 'azl_db_version' ), 'version differs' );
 				Azl_Schema::maybe_upgrade();
-				eq( '2+example@2', get_option( 'azl_db_version' ) );
+				eq( Azl_Schema::VERSION . '+example@2', get_option( 'azl_db_version' ) );
 				eq( 1, count( example_rows() ) );
 				eq( 1, Azl_Db::counter( 'ex' ), 'counters are never reset' );
 				ok( null !== Azl_Db::val( 'SELECT id FROM ' . Azl_Db::t( 'requests' ) . ' WHERE id = %s', array( $request ) ), 'request still there' );

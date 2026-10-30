@@ -65,18 +65,7 @@ describe("dashboard", () => {
   });
 });
 
-describe("placeholders and crisis", () => {
-  it("each coming-next module has its name, one sentence, a disabled action and an empty state, from one component", () => {
-    for (const [id, title, action] of [["inquiries", "Inquiries", "New Inquiry"], ["housestatus", "House Status", "New Log"], ["transport", "Transport Log", "Log Trip"], ["reminders", "Reminders", "New Reminder"]]) {
-      const View = MODULES.find((m) => m.id === id)!.Screen;
-      const html = renderToStaticMarkup(<View />);
-      expect(html).toContain(`<h1 class="t-large">${title}</h1>`);
-      expect(html).toContain("Coming next");
-      expect(html).toMatch(new RegExp(`disabled=""[^>]*>.*?${action}`));
-      expect(html).toContain('class="empty"');
-    }
-  });
-
+describe("crisis", () => {
   it("Crisis Mgmt lists the safety incidents as cards that open the existing alert, with a Log a case area", () => {
     app.set((s) => ({ ...s, incidents: [{ id: "x1", no: "INC-001", hazard: "smoke", rooms: ["412"], createdAt: Date.now(), text: "smoke in the hall", status: "active", log: [] }] }));
     const html = text(renderToStaticMarkup(<Crisis />));

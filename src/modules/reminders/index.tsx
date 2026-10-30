@@ -1,18 +1,16 @@
-import { ComingNext } from '../ComingNext';
-import type { ModuleDef } from '../types';
+import { lazyScreen, type ModuleDef } from '../types';
+import { reminderBadge } from './data';
 
-/** Wave 2 replaces this placeholder with the module's own screen (see ../README.md). */
-function Reminders() {
-  return <ComingNext title="Reminders" icon="bell" action="New Reminder" filters={['All', 'Pending', 'Completed']} line="Follow-ups for the help desk, linked to a ticket, work order, house log or crisis case." />;
-}
-
+/**
+ * Reminders (the client prototype's module 9): follow-ups for the help desk, optionally linked to a request, work
+ * order, inquiry, house-status log or crisis case. Badge: pending. The cards carry everything, so there is no detail pane.
+ */
 const reminders: ModuleDef = {
   id: 'reminders',
   label: 'Reminders',
   icon: 'bell',
-  // Wave 2: count pending reminders from moduleData(s, 'reminders'). Until the module has data the count is 0, shown as the prototype shows it.
-  badge: () => 0,
+  badge: reminderBadge,
   badgeLabel: 'pending',
-  Screen: Reminders,
+  Screen: lazyScreen(() => import('./Reminders').then((m) => m.Reminders)),
 };
 export default reminders;

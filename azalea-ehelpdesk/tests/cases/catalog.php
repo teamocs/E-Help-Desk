@@ -392,7 +392,8 @@ test(
 		Azl_Rest::register_routes();
 		$routes = $GLOBALS['azl_wp']['routes'];
 		eq( array( Azl_Rest::class, 'can_use_desk' ), $routes['azl-ehd/v1/catalog']['permission_callback'] );
-		$put = $routes['azl-ehd/v1/catalog/(?P<list>departments|requestTypes|bundles|holdReasons|jobTitles|woFindings)'];
+		$put = $routes['azl-ehd/v1/catalog/(?P<list>' . implode( '|', Azl_Catalog::lists() ) . ')']; // module lists (cleaningTypes, woAreas, ...) join the route
+		ok( 0 === strpos( implode( '|', Azl_Catalog::lists() ), 'departments|requestTypes|bundles|holdReasons|jobTitles|woFindings' ), 'built-in lists first' );
 		eq( array( 'PUT', array( Azl_Rest::class, 'can_manage_lists' ) ), array( $put['methods'], $put['permission_callback'] ) );
 		$matrix = array(
 			OWNER_ID => array( true, true ),

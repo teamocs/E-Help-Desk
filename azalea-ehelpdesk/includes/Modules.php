@@ -173,13 +173,40 @@ final class Azl_Modules {
 		if ( ! preg_match( '/^\s*CREATE TABLE\s+' . $p . '([a-z0-9_]+)\s*\(/i', $sql, $m ) ) {
 			return 'schema must be CREATE TABLE ' . $wpdb->prefix . 'azl_<name> statements';
 		}
-		if ( in_array( strtolower( $m[1] ), Azl_Schema::TABLES, true ) ) {
-			return "table azl_{$m[1]} belongs to the plugin";
-		}
 		if ( preg_match( '/\b(DROP|ALTER|TRUNCATE|DELETE|UPDATE|INSERT|RENAME|GRANT)\b/i', $sql ) || substr_count( $sql, ';' ) > 1 ) {
 			return 'schema may only create tables (additive changes only)';
 		}
+		if ( in_array( strtolower( $m[1] ), Azl_Schema::TABLES, true ) && ! self::extends_core( strtolower( $m[1] ), $sql ) ) {
+			return "table azl_{$m[1]} belongs to the plugin";
+		}
 		return null;
+	}
+
+	/**
+	 * A module may redeclare a plugin table only to ADD columns or keys (dbDelta keeps the last statement per table and
+	 * adds what is missing): every line of the plugin's own statement must appear unchanged, so no column type changes,
+	 * and no other registered module may extend the same table (one of the two would lose its columns).
+	 */
+	private static function extends_core( string $table, string $sql ): bool {
+		global $wpdb;
+		$lines = static function ( string $s ): array {
+			return array_map(
+				static function ( $l ) {
+					return rtrim( trim( $l ), ',' );
+				},
+				explode( "\n", preg_replace( '/^[^(]*\(|\)[^)]*$/s', '', trim( $s ) ) )
+			);
+		};
+		$core = null;
+		foreach ( Azl_Schema::sql() as $s ) {
+			if ( preg_match( '/^\s*CREATE TABLE\s+' . preg_quote( $wpdb->prefix . 'azl_' . $table, '/' ) . '\s*\(/i', $s ) ) {
+				$core = $core ?? $s; // the plugin's statement comes first; later ones are modules'
+				if ( $s !== $core ) {
+					return false;
+				}
+			}
+		}
+		return null !== $core && array() === array_diff( array_filter( $lines( $core ) ), $lines( $sql ) );
 	}
 
 	/** Every module's CREATE TABLE statements. */

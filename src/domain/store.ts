@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from 'react';
 import { buildSeed } from './seed';
-import { HAZARDS, STAFF, detectSafety, hubUp, isOpen, pad } from './rules';
-import { SEED_CATALOG, canEscalate, isCatalog, type Catalog } from './catalog';
+import { HAZARDS, STAFF, detectSafety, hubUp, isOpen, pad, undoTarget } from './rules';
+import { SEED_CATALOG, canEscalate, deptLabel, isCatalog, type Catalog } from './catalog';
 import { haptic, hapticsConfig, tone } from '../lib/haptics';
-import type { Hazard, HoldReason, Item, Incident, Prefs, State, Toast, WorkOrder } from './types';
+import type { Hazard, HoldReason, Item, Incident, Prefs, Request, State, Toast, WorkOrder } from './types';
+import { OTHER_SLA_MIN, QTY_MAX, type NewRow, type RequestCommand, type Source } from '../modules/requests/commands';
 import type { Snapshot } from './contract';
 import { remote, type Draft } from './remote';
 import type { Level, Matrix } from '../modules/access';
@@ -215,79 +216,115 @@ export function lock() {
 export interface LogInput {
   room: string;
   presets?: string[];
+  /** New Request rows (request types or "Other" items with qty and assignee). Sent instead of presets. */
+  rows?: NewRow[];
   bundle?: string;
   remarks?: string;
   later?: boolean;
   vip?: boolean;
+  /** Who asked. Without it the request keeps the pre-wave-2 value 'staff'. */
+  source?: Source;
+  staffName?: string;
+  /** The HDO's staff id; the person logging by default. */
+  hdo?: string;
 }
 
 /** The hotel's active request type or bundle with this key (archived ones are not offered for new work). */
 const activeType = (cat: Catalog, key: string) => cat.requestTypes.find((x) => x.key === key && x.active);
 const activeBundle = (cat: Catalog, key?: string) => cat.bundles.find((x) => x.key === key && x.active);
+const activeDept = (cat: Catalog, key?: string) => cat.departments.some((d) => d.key === key && d.active);
+/** The signed-in person when they are a staff row (a manager account acting as itself is 'member', not one). */
+const meStaff = (s: State) => (s.me && s.me !== 'member' ? s.me : undefined);
+
+/** An item spec from a row: [name, dept, slaMin, qty, assignee], or null when the row is not valid here. */
+function rowSpec(cat: Catalog, r: NewRow): [string, string, number, number, string | undefined] | null {
+  const qty = r.qty ?? 1;
+  if (!Number.isInteger(qty) || qty < 1 || qty > QTY_MAX) return null;
+  if (r.type) {
+    const p = activeType(cat, r.type);
+    return p ? [p.label, p.dept, p.slaMin, qty, r.assignee] : null;
+  }
+  const name = (r.other ?? '').trim();
+  return name && activeDept(cat, r.dept) ? [name, r.dept!, OTHER_SLA_MIN, qty, r.assignee] : null;
+}
 
 export function logRequest(o: LogInput): string {
   const reqId = nid('r');
   const refs: string[] = [reqId];
   const cat = app.get().catalog;
-  const presets = (o.presets ?? []).filter((k) => activeType(cat, k));
-  const bundle = activeBundle(cat, o.bundle);
-  const itemIds = [...presets.map(() => nid('i')), ...(bundle ? bundle.parts.map(() => nid('i')) : [])];
+  const later = !!o.later;
+  const presets = later ? [] : (o.presets ?? []).filter((k) => activeType(cat, k));
+  const rows = later ? [] : (o.rows ?? []).filter((r) => rowSpec(cat, r));
+  const bundle = later ? undefined : activeBundle(cat, o.bundle);
+  const specs = [
+    ...(o.rows ? rows.map((r) => rowSpec(cat, r)!) : presets.map((k) => { const p = activeType(cat, k)!; return [p.label, p.dept, p.slaMin, 1, undefined] as const; })),
+  ];
+  const itemIds = [...specs.map(() => nid('i')), ...(bundle ? bundle.parts.map(() => nid('i')) : [])];
+  const s0 = app.get();
+  const me = meStaff(s0);
+  const hdo = o.hdo ?? me;
   let next = 0;
   commit(`Log request, room ${o.room}`, (s) => {
     const n = s.seq.t + 1;
     const items: Record<string, Item> = {};
     const ids: string[] = [];
-    const mk = (name: string, dept: Item['dept'], slaMin: number, dependsOn?: string): string => {
+    const mk = (name: string, dept: Item['dept'], slaMin: number, dependsOn?: string, qty = 1, assignee?: string): string => {
       const id = itemIds[next++];
       ids.push(id);
       refs.push(id);
-      items[id] = { id, requestId: reqId, name, qty: 1, dept, status: 'new', createdAt: s.now, heldMs: 0, slaMin, dependsOn, events: [ev(s, 'Logged')] };
+      items[id] = { id, requestId: reqId, name, qty, dept, assignee, status: 'new', createdAt: s.now, heldMs: 0, slaMin, dependsOn, events: [ev(s, 'Logged')] };
       return id;
     };
-    for (const k of presets) {
-      const p = activeType(cat, k);
-      if (p) mk(p.label, p.dept, p.slaMin);
-    }
+    for (const [name, dept, sla, qty, who] of specs) mk(name, dept, sla, undefined, qty, who);
     if (bundle) {
       const made: string[] = [];
       for (const part of bundle.parts) made.push(mk(part.name, part.dept, part.slaMin, part.after != null ? made[part.after] : undefined));
     }
+    const staffName = o.source === 'staff_request' ? o.staffName?.trim() : undefined;
     return {
       ...s,
       seq: { ...s.seq, t: n },
       requests: [
-        { id: reqId, ticket: `T-${pad(n)}`, room: o.room, source: 'staff', remarks: o.remarks, loggedBy: s.me ?? 's-maria', createdAt: s.now, itemIds: ids, incomplete: o.later || ids.length === 0, vip: o.vip },
+        { id: reqId, ticket: `T-${pad(n)}`, room: o.room, source: o.source ?? 'staff', staffName, hdo, remarks: o.remarks, loggedBy: s.me ?? 's-maria', createdAt: s.now, itemIds: ids, incomplete: later || ids.length === 0, vip: o.vip, events: [ev(s, 'Logged')] },
         ...s.requests,
       ],
       items: { ...s.items, ...items },
     };
   }, refs);
-  send({ type: 'logRequest', requestId: reqId, itemIds, room: o.room, presets, bundle: bundle?.key, remarks: o.remarks, later: o.later, vip: o.vip });
+  const cmd: RequestCommand = {
+    type: 'logRequest', requestId: reqId, itemIds, room: o.room, bundle: bundle?.key, remarks: o.remarks, later: o.later, vip: o.vip,
+    ...(o.rows ? { rows: later ? [] : rows } : { presets }),
+    ...(o.source ? { source: o.source, ...(o.source === 'staff_request' ? { staffName: o.staffName?.trim() } : {}) } : {}),
+    ...(o.hdo && o.hdo !== me ? { hdoId: o.hdo } : {}),
+  };
+  remote.sendModule(cmd);
   return reqId;
 }
 
-export function completeRequest(reqId: string, presetKeys: string[]) {
+/** Adds the items of a ticket logged for later: request type keys, or New Request rows. */
+export function completeRequest(reqId: string, what: string[] | NewRow[]) {
   const refs = [reqId];
   const cat = app.get().catalog;
-  const presets = presetKeys.filter((k) => activeType(cat, k));
-  const itemIds = presets.map(() => nid('i'));
-  let next = 0;
+  const asRows: NewRow[] = what.map((x) => (typeof x === 'string' ? { type: x } : x));
+  const rows = asRows.filter((r) => rowSpec(cat, r));
+  const itemIds = rows.map(() => nid('i'));
   commit('Finish logged request', (s) => {
     const req = s.requests.find((r) => r.id === reqId);
     if (!req) return s;
     const items: Record<string, Item> = {};
-    const ids: string[] = [];
-    for (const k of presets) {
-      const p = activeType(cat, k);
-      if (!p) continue;
-      const id = itemIds[next++];
-      ids.push(id);
+    rows.forEach((r, i) => {
+      const [name, dept, slaMin, qty, assignee] = rowSpec(cat, r)!;
+      const id = itemIds[i];
       refs.push(id);
-      items[id] = { id, requestId: reqId, name: p.label, qty: 1, dept: p.dept, status: 'new', createdAt: s.now, heldMs: 0, slaMin: p.slaMin, events: [ev(s, 'Details added')] };
-    }
-    return { ...s, requests: s.requests.map((r) => (r.id === reqId ? { ...r, itemIds: [...r.itemIds, ...ids], incomplete: false } : r)), items: { ...s.items, ...items } };
+      items[id] = { id, requestId: reqId, name, qty, dept, assignee, status: 'new', createdAt: s.now, heldMs: 0, slaMin, events: [ev(s, 'Details added')] };
+    });
+    return { ...s, requests: s.requests.map((r) => (r.id === reqId ? { ...r, itemIds: [...r.itemIds, ...itemIds], incomplete: false } : r)), items: { ...s.items, ...items } };
   }, refs);
-  send({ type: 'completeRequest', requestId: reqId, itemIds, presets });
+  const plain = what.every((x) => typeof x === 'string');
+  const cmd: RequestCommand = plain
+    ? { type: 'completeRequest', requestId: reqId, itemIds, presets: rows.map((r) => r.type!) }
+    : { type: 'completeRequest', requestId: reqId, itemIds, rows };
+  remote.sendModule(cmd);
 }
 
 /** Returns true when the change applied locally, so only real changes are sent to the server. */
@@ -307,19 +344,19 @@ function patchItem(id: string, label: string, fn: (it: Item, now: number) => Par
 const firstOf = (dept: Item['dept'], s: State) => s.staff.find((p) => p.dept === dept && p.onShift && p.role === 'staff')?.id;
 
 export const relay = (id: string) => {
-  const ok = patchItem(id, 'Relayed', (it, now) => (it.status === 'new' ? { status: 'relayed', ackAt: now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
+  const ok = patchItem(id, 'Relayed', (it, now) => (it.status === 'new' ? { status: 'relayed', prevStatus: it.status, ackAt: now, relayedBy: meStaff(app.get()), assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
   if (ok) send({ type: 'relay', itemId: id });
 };
 export const onSite = (id: string) => {
-  const ok = patchItem(id, 'On site', (it, now) => (['new', 'relayed'].includes(it.status) ? { status: 'on_site', ackAt: it.ackAt ?? now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
+  const ok = patchItem(id, 'On site', (it, now) => (['new', 'relayed'].includes(it.status) ? { status: 'on_site', prevStatus: it.status, ackAt: it.ackAt ?? now, onSiteAt: now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
   if (ok) send({ type: 'onSite', itemId: id });
 };
 export const hold = (id: string, reason: HoldReason) => {
-  const ok = patchItem(id, 'On hold', (it, now) => (['relayed', 'on_site'].includes(it.status) ? { status: 'on_hold', holdReason: reason, holdSince: now, ackAt: it.ackAt ?? now } : null));
+  const ok = patchItem(id, 'On hold', (it, now) => (['relayed', 'on_site'].includes(it.status) ? { status: 'on_hold', prevStatus: it.status, holdReason: reason, holdSince: now, ackAt: it.ackAt ?? now } : null));
   if (ok) send({ type: 'hold', itemId: id, reason });
 };
 export const resume = (id: string) => {
-  const ok = patchItem(id, 'Resumed', (it, now) => (it.status === 'on_hold' ? { status: 'on_site', heldMs: it.heldMs + (now - (it.holdSince ?? now)), holdSince: undefined, holdReason: undefined } : null));
+  const ok = patchItem(id, 'Resumed', (it, now) => (it.status === 'on_hold' ? { status: 'on_site', prevStatus: it.status, heldMs: it.heldMs + (now - (it.holdSince ?? now)), holdSince: undefined, holdReason: undefined } : null));
   if (ok) send({ type: 'resume', itemId: id });
 };
 
@@ -327,7 +364,7 @@ function closeItem(s: State, id: string, status: 'done' | 'cant_do' | 'duplicate
   const it = s.items[id];
   if (!it) return s;
   const heldMs = it.status === 'on_hold' ? it.heldMs + (s.now - (it.holdSince ?? s.now)) : it.heldMs;
-  let n: State = { ...s, items: { ...s.items, [id]: { ...it, status, doneAt: s.now, heldMs, holdSince: undefined, ackAt: it.ackAt ?? s.now, events: [...it.events, ev(s, what)] } } };
+  let n: State = { ...s, items: { ...s.items, [id]: { ...it, status, prevStatus: it.status, doneAt: s.now, heldMs, holdSince: undefined, holdReason: undefined, ackAt: it.ackAt ?? s.now, events: [...it.events, ev(s, what)] } } };
   if (status === 'done' && /checkout|inspection/i.test(it.name)) {
     const room = s.requests.find((r) => r.id === it.requestId)?.room;
     n = { ...n, cleaning: n.cleaning.map((c) => (c.room === room && (c.status === 'scheduled' || c.status === 'queued') ? { ...c, status: 'ready' } : c)) };
@@ -352,8 +389,10 @@ export function finishItem(id: string, status: 'done' | 'cant_do' | 'duplicate' 
   if (readied) toast(`Room ${room} is ready for cleaning. Housekeeping was told.`, 'success');
 }
 
-export function transfer(id: string, dept: Item['dept']) {
+/** Moves an open item to another department (a copy there starts new), with an optional reason and person. */
+export function transfer(id: string, dept: Item['dept'], o: { note?: string; assignee?: string } = {}) {
   const newId = nid('i');
+  const note = o.note?.trim() || undefined;
   let applied = false;
   commit('Transfer', (s) => {
     const it = s.items[id];
@@ -364,14 +403,164 @@ export function transfer(id: string, dept: Item['dept']) {
       ...s,
       items: {
         ...s.items,
-        [id]: { ...it, status: 'transferred', doneAt: s.now, events: [...it.events, ev(s, `Transferred to ${dept}`)] },
-        [newId]: { ...it, id: newId, dept, status: 'new', ackAt: undefined, assignee: undefined, createdAt: s.now, heldMs: 0, holdSince: undefined, holdReason: undefined, xFrom: id, events: [ev(s, 'Transferred in')] },
+        [id]: { ...it, status: 'transferred', prevStatus: it.status, doneAt: s.now, events: [...it.events, ev(s, `Transferred to ${dept}`)] },
+        [newId]: {
+          ...it, id: newId, dept, status: 'new', ackAt: undefined, onSiteAt: undefined, relayedBy: undefined, prevStatus: undefined, assignee: o.assignee, createdAt: s.now, heldMs: 0,
+          holdSince: undefined, holdReason: undefined, doneAt: undefined, xFrom: id, xKind: 'transfer', xNote: note, events: [ev(s, 'Transferred in')],
+        },
       },
       requests: s.requests.map((r) => (r.id === req?.id ? { ...r, itemIds: [...r.itemIds, newId] } : r)),
     };
   }, [id]);
-  if (applied) send({ type: 'transfer', itemId: id, newItemId: newId, dept });
+  if (applied) remote.sendModule({ type: 'transfer', itemId: id, newItemId: newId, dept, ...(note ? { note } : {}), ...(o.assignee ? { assignee: o.assignee } : {}) } satisfies RequestCommand);
 }
+
+/* ---------- requests: edit, hand off, undo (wave 2) ---------- */
+
+const staffName = (s: State, id?: string) => (id ? s.staff.find((p) => p.id === id)?.name ?? '—' : '—');
+const asked = (source: string, name?: string) => (source === 'staff_request' ? `Staff (${name ?? ''})` : 'Guest');
+const line = (field: string, a: string, b: string) => {
+  const cut = (x: string) => { const v = x || '—'; return v.length > 70 ? `${v.slice(0, 69)}…` : v; };
+  return `${field}: ${cut(a)} → ${cut(b)}`;
+};
+
+export interface TicketEdit { room?: string; remarks?: string; vip?: boolean; source?: Source; staffName?: string; hdo?: string }
+
+/**
+ * Edit ticket. Sends only what changed; each change becomes one history line ("Room: 412 → 414"), here at once and
+ * from the server on the next snapshot. Returns false (and sends nothing) when nothing changed.
+ */
+export function editRequest(reqId: string, e: TicketEdit): boolean {
+  const s0 = app.get();
+  const req = s0.requests.find((r) => r.id === reqId);
+  if (!req) return false;
+  const cmd: Extract<RequestCommand, { type: 'editRequest' }> = { type: 'editRequest', requestId: reqId };
+  const lines: string[] = [];
+  const patch: Partial<Request> = {};
+  if (e.room != null && e.room.trim() !== req.room) { cmd.room = patch.room = e.room.trim(); lines.push(line('Room', req.room, cmd.room)); }
+  if (e.vip != null && e.vip !== !!req.vip) { cmd.vip = patch.vip = e.vip; lines.push(line('VIP', req.vip ? 'yes' : 'no', e.vip ? 'yes' : 'no')); }
+  if (e.source) {
+    const name = e.source === 'staff_request' ? e.staffName?.trim() : undefined;
+    const was = asked(req.source, req.staffName), now = asked(e.source, name);
+    if (was !== now) { cmd.source = e.source; if (name) cmd.staffName = name; patch.source = e.source; patch.staffName = name; lines.push(line('Requested by', was, now)); }
+  }
+  if (e.hdo && e.hdo !== req.hdo) { cmd.hdoId = patch.hdo = e.hdo; lines.push(line('HDO', staffName(s0, req.hdo), staffName(s0, e.hdo))); }
+  if (e.remarks != null && e.remarks.trim() !== (req.remarks ?? '')) { cmd.remarks = e.remarks.trim(); patch.remarks = cmd.remarks || undefined; lines.push(line('Remarks', req.remarks ?? '', cmd.remarks)); }
+  if (!lines.length) return false;
+  commit('Edit ticket', (s) => ({
+    ...s,
+    requests: s.requests.map((r) => (r.id === reqId ? { ...r, ...patch, events: [...(r.events ?? []), ...lines.map((l) => ev(s, l))] } : r)),
+  }), [reqId]);
+  remote.sendModule(cmd);
+  return true;
+}
+
+export interface ItemEdit { name?: string; qty?: number; dept?: string; assignee?: string | null; remarks?: string }
+
+/** Edit item. The department changes only while the item is new (then Transfer). False when nothing changed. */
+export function editItem(id: string, e: ItemEdit): boolean {
+  const s0 = app.get();
+  const it = s0.items[id];
+  if (!it) return false;
+  const cat = s0.catalog;
+  const cmd: Extract<RequestCommand, { type: 'editItem' }> = { type: 'editItem', itemId: id };
+  const lines: string[] = [];
+  const patch: Partial<Item> = {};
+  const name = e.name?.trim();
+  const dept = e.dept && e.dept !== it.dept && it.status === 'new' ? e.dept : it.dept;
+  if (name && name !== it.name) { cmd.name = patch.name = name; lines.push(line('Item', it.name, name)); }
+  if (e.qty != null && e.qty !== it.qty) { cmd.qty = patch.qty = e.qty; lines.push(line('Qty', String(it.qty), String(e.qty))); }
+  if (dept !== it.dept) { cmd.dept = patch.dept = dept; lines.push(line('Department', deptLabel(it.dept, cat), deptLabel(dept, cat))); }
+  const want = e.assignee !== undefined ? e.assignee ?? undefined : dept !== it.dept ? undefined : it.assignee;
+  if (want !== it.assignee) { cmd.assignee = want ?? null; patch.assignee = want; lines.push(line('Assigned', staffName(s0, it.assignee), staffName(s0, want))); }
+  if (e.remarks != null && e.remarks.trim() !== (it.remarks ?? '')) { cmd.remarks = e.remarks.trim(); patch.remarks = cmd.remarks || undefined; lines.push(line('Remarks', it.remarks ?? '', cmd.remarks)); }
+  if (!lines.length) return false;
+  if (patch.name || patch.dept) {
+    const t = cat.requestTypes.find((p) => p.active && p.dept === dept && p.label.toLowerCase() === (patch.name ?? it.name).toLowerCase());
+    if (t) patch.slaMin = t.slaMin;
+  }
+  commit('Edit item', (s) => {
+    const cur = s.items[id];
+    return cur ? { ...s, items: { ...s.items, [id]: { ...cur, ...patch, events: [...cur.events, ...lines.map((l) => ev(s, l))] } } } : s;
+  }, [id]);
+  remote.sendModule(cmd);
+  return true;
+}
+
+/** Hand Off a done item: a follow-up item for a department (and a person), with a note. Returns the new item id. */
+export function handOff(id: string, o: { dept: string; name?: string; assignee?: string; note?: string }): string | null {
+  const s0 = app.get();
+  const it = s0.items[id];
+  if (!it || it.status !== 'done' || !activeDept(s0.catalog, o.dept)) return null;
+  const newId = nid('i');
+  const name = o.name?.trim() || it.name;
+  const note = o.note?.trim() || undefined;
+  const t = s0.catalog.requestTypes.find((p) => p.active && p.dept === o.dept && p.label.toLowerCase() === name.toLowerCase());
+  const slaMin = t ? t.slaMin : name === it.name ? it.slaMin : OTHER_SLA_MIN;
+  const to = `${deptLabel(o.dept, s0.catalog)}${o.assignee ? ` (${staffName(s0, o.assignee)})` : ''}`;
+  commit('Hand off', (s) => ({
+    ...s,
+    items: {
+      ...s.items,
+      [id]: { ...it, events: [...it.events, ev(s, `Handed off to ${to}${note ? `: ${note}` : ''}`.slice(0, 191))] },
+      [newId]: { id: newId, requestId: it.requestId, name, qty: it.qty, dept: o.dept, assignee: o.assignee, status: 'new', createdAt: s.now, heldMs: 0, slaMin, xFrom: id, xKind: 'handoff', xNote: note, events: [ev(s, `Follow-up of ${it.name}`)] },
+    },
+    requests: s.requests.map((r) => (r.id === it.requestId ? { ...r, itemIds: [...r.itemIds, newId] } : r)),
+  }), [id, newId]);
+  remote.sendModule({ type: 'handOff', itemId: id, newItemId: newId, dept: o.dept, ...(name !== it.name ? { name } : {}), ...(o.assignee ? { assignee: o.assignee } : {}), ...(note ? { note } : {}) } satisfies RequestCommand);
+  return newId;
+}
+
+/** The label of the newest step not undone yet (the server's last_step), for "Undone: <step>". */
+export function lastStep(it: Item): string | null {
+  return lastStepEvent(it)?.what ?? null;
+}
+/** The event of that step (who took it: department staff may only undo their own). */
+export function lastStepEvent(it: Item): Item['events'][number] | null {
+  let undone = 0;
+  for (let i = it.events.length - 1; i >= 0; i--) {
+    const w = it.events[i].what;
+    if (w.startsWith('Undone: ')) undone++;
+    else if (UNDOABLE.includes(w) || w.startsWith('Transferred to ')) {
+      if (!undone) return it.events[i];
+      undone--;
+    }
+  }
+  return null;
+}
+const UNDOABLE = ['Relayed', 'On site', 'On hold', 'Resumed', 'Done', "Can't do", 'Marked duplicate', 'Cancelled'];
+
+/**
+ * Undo the item's latest step, by the rules of undoTarget() (rules.ts; the UNDO RULES block in Commands.php).
+ * Returns the refusal text, or null when it was undone. An escalation is undone with undoEscalate.
+ */
+export function undoStep(id: string): string | null {
+  const s0 = app.get();
+  const it = s0.items[id];
+  if (!it) return 'Unknown item';
+  if (it.status === 'escalated') { undoEscalate(id); return null; }
+  const t = undoTarget(it);
+  if ('refused' in t) return t.refused;
+  if (it.status === 'cancelled' && !lastStep(it)) return 'Nothing to undo';
+  const copy = it.status === 'transferred' ? Object.values(s0.items).filter((x) => x.xFrom === id && x.status !== 'cancelled' && x.xKind !== 'handoff').sort((a, b) => b.createdAt - a.createdAt)[0] : undefined;
+  if (copy && copy.status !== 'new') return 'The other department already started on it. Ask them to transfer it back.';
+  const what = `Undone: ${lastStep(it) ?? STATUS_WORD[it.status]}`;
+  commit('Undo', (s) => {
+    const cur = s.items[id];
+    if (!cur) return s;
+    const p: Partial<Item> = { status: t.to, prevStatus: undefined };
+    if (cur.status === 'relayed') Object.assign(p, { ackAt: undefined, relayedBy: undefined });
+    else if (cur.status === 'on_site') Object.assign(p, { onSiteAt: undefined }, t.to === 'new' ? { ackAt: undefined } : {});
+    else if (cur.status === 'on_hold') Object.assign(p, { holdSince: undefined, holdReason: undefined });
+    else Object.assign(p, { doneAt: undefined }, t.to === 'new' ? { ackAt: undefined } : {});
+    const items = { ...s.items, [id]: { ...cur, ...p, events: [...cur.events, ev(s, what)] } };
+    if (copy && items[copy.id]) items[copy.id] = { ...items[copy.id], status: 'cancelled', prevStatus: 'new', doneAt: s.now, events: [...items[copy.id].events, ev(s, 'Cancelled: transfer undone')] };
+    return { ...s, items };
+  }, [id]);
+  remote.sendModule({ type: 'undoStep', itemId: id } satisfies RequestCommand);
+  return null;
+}
+const STATUS_WORD: Record<string, string> = { relayed: 'Relayed', on_site: 'On site', on_hold: 'On hold', done: 'Done', cant_do: "Can't do", duplicate: 'Marked duplicate', cancelled: 'Cancelled', transferred: 'Transfer' };
 
 /* ---------- escalate item -> work order ---------- */
 export function escalate(id: string): boolean {

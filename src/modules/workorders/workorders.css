@@ -1,0 +1,98 @@
+/* Work Orders and Cleaning: data tables, filter bar, phone cards, the record pane and form sheets.
+   Built on the desk's tokens (src/styles.css): hotel palette, 48/44 px pill buttons, 16 px cards. */
+
+/* ---------- action bar and filters ---------- */
+.mx-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 1rem; }
+.mx-filters { display: grid; gap: 10px; margin-top: 1rem; padding: 12px; background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); }
+.mx-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; margin: 0; }
+.mx-tabs .chip { flex: none; }
+.mx-tabs .chip .n { font-variant-numeric: tabular-nums; opacity: 0.75; font-weight: 600; }
+.mx-selects { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: flex-end; }
+.mx-selects .fm-field { min-width: 11rem; flex: 1 1 11rem; max-width: 16rem; }
+.mx-count { margin: 12px 4px 6px; color: var(--fg-2); }
+
+/* ---------- data table ---------- */
+.dt { margin-top: 0.5rem; background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); overflow-x: auto; scrollbar-width: thin; }
+.dt:focus-visible { outline-offset: 2px; }
+.dt table { width: 100%; border-collapse: collapse; font: 400 0.875rem/1.35 var(--font); font-variant-numeric: tabular-nums; }
+.dt th { position: sticky; top: 0; text-align: left; padding: 10px 8px; font: 600 0.75rem/1.2 var(--font); letter-spacing: 0.04em; text-transform: uppercase; color: var(--fg-2); background: var(--surface); border-bottom: 1px solid var(--sep); white-space: nowrap; }
+.dt td { padding: 6px 8px; border-bottom: 1px solid var(--sep); vertical-align: middle; }
+.dt tbody tr:last-child td { border-bottom: 0; }
+.dt tbody tr { cursor: pointer; transition: background 0.12s; }
+.dt tbody tr:hover { background: var(--fill); }
+.dt tbody tr[aria-current="true"] { background: var(--accent-soft); }
+.dt .no { font-weight: 600; white-space: nowrap; color: var(--fg); text-decoration: underline; text-decoration-color: var(--sep); text-underline-offset: 3px; min-height: var(--hit-sm); display: inline-flex; align-items: center; }
+.dt .no:hover { text-decoration-color: currentColor; }
+.dt .desc { max-width: 15rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dt .nowrap { white-space: nowrap; }
+.dt .act { display: flex; gap: 6px; flex-wrap: nowrap; }
+.dt .act .btn-sm { padding: 0 0.85rem; }
+.c-muted { color: var(--fg-2); }
+.mx-sub { display: block; color: var(--fg-2); font-size: 0.8125rem; }
+.dt th:first-child, .dt td:first-child { padding-left: 14px; }
+.c-bad { color: var(--bad); font-weight: 600; }
+.mx-late { display: inline-flex; align-items: center; gap: 4px; color: var(--bad); font-weight: 600; white-space: nowrap; }
+.mx-out { color: var(--accent-strong); font-weight: 600; }
+
+/* ---------- action buttons by meaning (the prototype: green Complete, amber Hold) ---------- */
+.btn-ok { background: var(--ok); color: #fff; }
+.btn-ok:hover:not([disabled]) { background: color-mix(in srgb, var(--ok) 86%, #000); }
+.btn-warn { background: var(--warn-soft); color: var(--warn); }
+.btn-warn:hover:not([disabled]) { background: color-mix(in srgb, var(--warn-soft) 80%, var(--warn)); }
+
+/* ---------- phone cards: the same information as a row ---------- */
+.mx-cards { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; gap: 8px; }
+.mx-card { background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); padding: 12px 14px; display: grid; gap: 6px; }
+.mx-card[aria-current="true"] { border-color: var(--accent-strong); }
+.mx-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mx-card-open { display: grid; gap: 4px; text-align: left; width: 100%; min-height: var(--hit-sm); border-radius: 8px; }
+.mx-card dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font: 400 0.875rem/1.4 var(--font); }
+.mx-card dt { color: var(--fg-2); }
+.mx-card dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.mx-card .act { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ---------- record pane ---------- */
+.wo-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wo-sec { margin-top: 1.25rem; }
+.wo-sec > h3 { margin: 0 0 6px; font: 600 0.8125rem var(--font); color: var(--fg-2); }
+.wo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: 8px 14px; margin: 0; }
+.wo-grid > div { min-width: 0; }
+.wo-grid dt { font: 500 0.75rem/1.3 var(--font); color: var(--fg-2); }
+.wo-grid dd { margin: 2px 0 0; font: 400 0.9375rem/1.35 var(--font); overflow-wrap: anywhere; }
+.wo-box { padding: 10px 12px; border-radius: 12px; background: var(--fill); white-space: pre-line; overflow-wrap: anywhere; }
+.wo-box.accent { background: var(--accent-soft); }
+.wo-box.ok { background: var(--ok-soft); }
+.wo-box.warn { background: var(--warn-soft); }
+.wo-cost { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-variant-numeric: tabular-nums; }
+.wo-cost b { text-align: right; }
+.wo-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.wo-log li { display: grid; gap: 2px; padding: 8px 12px; border-radius: 10px; background: var(--fill); }
+.wo-log .meta { font: 400 0.8125rem/1.3 var(--font); color: var(--fg-2); }
+.wo-log .text { white-space: pre-line; overflow-wrap: anywhere; }
+.wo-audit { max-height: 14rem; overflow-y: auto; }
+.wo-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--sep); }
+
+/* ---------- forms in sheets ---------- */
+.fm { display: grid; gap: 14px; padding-top: 4px; }
+.fm-summary { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--fill); }
+.fm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.fm-field { min-width: 0; }
+.fm-field.wide, .fm-grid > .wide, .fm-part, .fm-check { grid-column: 1 / -1; }
+.fm-part { margin: 6px 0 -4px; padding-top: 10px; border-top: 1px solid var(--sep); font: 600 0.8125rem var(--font); color: var(--fg-2); }
+.fm-error { margin: 0.3rem 0 0; color: var(--bad); font: 600 0.8125rem/1.4 var(--font); }
+.field[aria-invalid="true"] { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
+.field[readonly] { background: var(--fill); color: var(--fg-2); }
+.fm-rooms { grid-column: 1 / -1; display: grid; gap: 8px; }
+.fm-room { display: flex; gap: 8px; align-items: flex-start; }
+.fm-room .fm-field { flex: 1; }
+.fm-room .iconbtn { margin-top: 1.55rem; }
+.fm-foot { position: sticky; bottom: calc(-1.5rem - env(safe-area-inset-bottom)); display: flex; justify-content: flex-end; gap: 8px; margin: 4px -16px 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--sep); }
+.fm-foot .btn { min-width: 7.5rem; }
+@media (max-width: 520px) {
+  .fm-grid { grid-template-columns: minmax(0, 1fr); }
+  .fm-foot .btn { flex: 1; min-width: 0; }
+}
+
+/* A form opened from a record's sheet (phones, tablets) sits above that sheet. */
+.sheet:has(.fm) { z-index: 43; }
+.backdrop:has(+ .sheet .fm) { z-index: 42; }

@@ -1,14 +1,15 @@
 import { lazyScreen, type ModuleDef } from '../types';
+import { unresolvedCount } from './model';
 
 /**
- * Crisis Mgmt: the safety incidents today; crisis cases arrive in wave 2. Badge: unresolved, which until cases exist
- * means safety alerts still active (a downgraded or resolved alert is closed).
+ * Crisis Mgmt: safety alerts and the crisis case log. Badge "unresolved": open and monitored cases, plus active
+ * safety alerts no open case covers yet (an alert and the case opened from it count once).
  */
 const crisis: ModuleDef = {
   id: 'crisis',
   label: 'Crisis Mgmt',
   icon: 'siren',
-  badge: (s) => s.incidents.filter((i) => i.status === 'active').length,
+  badge: unresolvedCount,
   badgeLabel: 'unresolved',
   Screen: lazyScreen(() => import('./Crisis').then((m) => m.Crisis)),
 };

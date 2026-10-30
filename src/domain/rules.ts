@@ -1,4 +1,4 @@
-import type { Hazard, Item, Net, Staff } from './types';
+import type { Hazard, Item, ItemStatus, Net, Staff } from './types';
 
 // Departments, request types, bundles and hold reasons are the hotel's own lists now: see catalog.ts.
 // What stays here is fixed because logic depends on it (hazards and safety words, statuses, the SLA clock).
@@ -68,6 +68,39 @@ export function sla(it: Item, items: Record<string, Item>, now: number): SlaView
   const e = now - start - it.heldMs;
   const t = it.slaMin * 60000;
   return { phase: 'work', ratio: e / t, overdue: e > t };
+}
+
+/**
+ * Where Undo takes an item, or { refused } with the reason. The same rule as Azl_Commands::undo_target (the UNDO RULES
+ * block in Commands.php): one step back, to prevStatus when known, else the fallbacks for rows from before wave 2.
+ */
+export function undoTarget(it: Pick<Item, 'status' | 'prevStatus' | 'relayedBy' | 'onSiteAt' | 'ackAt' | 'woId' | 'stBeforeEsc'>): { to: ItemStatus } | { refused: string } {
+  const prev = it.prevStatus;
+  switch (it.status) {
+    case 'relayed':
+      return { to: 'new' };
+    case 'on_site':
+      if (prev === 'on_hold') return { refused: 'A resume cannot be undone. Put the item on hold again.' };
+      if (prev === 'new' || prev === 'relayed') return { to: prev };
+      return { to: it.relayedBy != null || it.onSiteAt == null || (it.ackAt != null && it.ackAt < it.onSiteAt) ? 'relayed' : 'new' };
+    case 'on_hold':
+      return { to: prev === 'relayed' || prev === 'on_site' ? prev : 'on_site' };
+    case 'transferred':
+      if (prev === 'new' || prev === 'relayed' || prev === 'on_site' || prev === 'on_hold') return { to: prev };
+      return { to: it.onSiteAt == null ? 'relayed' : 'on_site' };
+    case 'done':
+    case 'cant_do':
+    case 'duplicate':
+    case 'cancelled':
+      if (it.woId) return { refused: 'Closed by its work order. Reopen the work order instead.' };
+      if (prev === 'on_hold') return { to: 'on_site' };
+      if (prev === 'new' || prev === 'relayed' || prev === 'on_site') return { to: prev };
+      return { to: it.onSiteAt == null ? 'relayed' : 'on_site' };
+    case 'escalated':
+      return { to: it.stBeforeEsc ?? 'on_site' };
+    default:
+      return { refused: 'Nothing to undo' };
+  }
 }
 
 /** Station-to-hub path. Standard tier lives in the cloud, Resilient on the edge node. */

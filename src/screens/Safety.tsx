@@ -6,6 +6,7 @@ import { downgradeIncident, record911, resolveIncident, setUI, useApp, useUI } f
 import { haptic, tone } from '../lib/haptics';
 import { springs } from '../lib/motion';
 import { Button, Icon } from '../ui/kit';
+import { casesOf, openCaseFromAlert } from '../modules/crisis/model';
 
 /** Full-screen local alert. It never depends on the internet and it never replaces the radio or 911. */
 export function Safety() {
@@ -15,6 +16,7 @@ export function Safety() {
   const inc = useApp((s) => s.incidents.find((i) => i.id === id));
   const me = useApp((s) => s.staff.find((p) => p.id === s.me));
   const live = inc?.status === 'active';
+  const caseNo = useApp((s) => casesOf(s).find((c) => c.incidentId === id)?.no);
 
   useEffect(() => {
     if (!open || !live) return;
@@ -62,6 +64,7 @@ export function Safety() {
 
             <div style={{ display: 'grid', gap: 10 }}>
               <Button size="lg" variant="fill" feel="medium" onClick={close}>{live ? 'Acknowledge and keep open' : 'Close'}</Button>
+              <Button variant="gray" onClick={() => openCaseFromAlert(inc)}>{caseNo ? `Open case ${caseNo}` : 'Open a case (crisis log)'}</Button>
               {live && <Button variant="gray" onClick={() => { downgradeIncident(inc.id); close(); }}>Downgrade to false alarm (logged)</Button>}
               {live && <Button variant="gray" disabled={!canSign} onClick={() => { resolveIncident(inc.id); close(); }}>{canSign ? 'Resolve with sign-off' : 'Resolve (manager sign-off required)'}</Button>}
             </div>

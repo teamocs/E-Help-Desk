@@ -1,0 +1,129 @@
+/* Requests (wave 2): the prototype's item table, its filter bar, the drawer and the New Request form, in the desk's
+   own tokens (src/styles.css). Status colours reuse the desk's soft tones; nothing here adds a new colour. */
+
+/* The table needs the room the prototype gives it; other screens keep their reading width. */
+.screen > .inner:has(.rq-list) { max-width: 1240px; }
+
+/* ---------- filter bar ---------- */
+.rq-bar { display: grid; gap: 10px; margin-bottom: 12px; }
+.rq-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.rq-bar .seg { max-width: 26rem; }
+.rq-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+.rq-quick .chip { min-height: var(--hit-sm); }
+.rq-search { flex: 1 1 16rem; min-width: 0; }
+.rq-dates { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.rq-dates label { display: grid; gap: 2px; font: 600 0.8125rem var(--font); color: var(--fg-2); flex: 1 1 9rem; max-width: 11rem; }
+.rq-dates input.field { width: 100%; min-height: var(--hit-sm); padding: 0.35rem 0.6rem; }
+.rq-count { color: var(--fg-2); font: 400 0.875rem var(--font); margin: 0 0 8px; }
+.rq-count b { color: var(--fg); font-weight: 600; }
+
+/* ---------- status badge ---------- */
+.st { display: inline-flex; align-items: center; height: 1.5rem; padding: 0 0.6rem; border-radius: var(--r-pill); font: 600 0.75rem var(--font); white-space: nowrap; background: var(--fill); color: var(--fg); }
+.st-new { background: var(--accent-soft); color: var(--accent-strong); }
+.st-relayed { background: var(--fill-2); }
+.st-on_site { background: var(--d-it-bg); color: var(--d-it); }
+.st-on_hold { background: var(--warn-soft); color: var(--warn); }
+.st-done { background: var(--ok-soft); color: var(--ok); }
+.st-transferred, .st-escalated { background: var(--d-fnb-bg); color: var(--d-fnb); }
+.st-cant_do, .st-cancelled, .st-duplicate { background: var(--fill); color: var(--fg-2); }
+.st-overdue { background: var(--bad-soft); color: var(--bad); }
+
+/* ---------- the item table ---------- */
+.rq-list { container-type: inline-size; }
+.rq-table-wrap { background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); overflow-x: auto; }
+.rq-table { width: 100%; border-collapse: collapse; font: 400 0.9375rem/1.35 var(--font); font-variant-numeric: tabular-nums; }
+.rq-table th { text-align: left; padding: 10px 8px; font: 600 0.75rem var(--font); letter-spacing: 0.02em; color: var(--fg-2); border-bottom: 1px solid var(--sep); white-space: nowrap; background: color-mix(in srgb, var(--fill) 50%, var(--surface)); }
+.rq-table td { padding: 6px 8px; border-bottom: 1px solid var(--sep); vertical-align: middle; }
+.rq-table tbody tr:last-child td { border-bottom: 0; }
+.rq-table tbody tr { cursor: pointer; }
+.rq-table tbody tr:hover { background: var(--fill); }
+.rq-table tbody tr[aria-selected="true"] { background: var(--accent-soft); }
+.rq-table tbody tr.closed td:not(:first-child) { color: var(--fg-2); }
+.rq-code { font-weight: 600; white-space: nowrap; min-height: var(--hit-sm); display: inline-flex; align-items: center; color: var(--accent-strong); text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+.rq-code:hover { text-decoration-color: currentColor; }
+.rq-room { font-weight: 700; white-space: nowrap; }
+.rq-room .vip { margin-left: 4px; }
+.rq-item { min-width: 9rem; overflow-wrap: anywhere; }
+.rq-item small { display: block; color: var(--fg-2); font-size: 0.8125rem; }
+.rq-num { text-align: right; white-space: nowrap; }
+.rq-acts { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
+.rq-acts .btn-sm { padding: 0 0.75rem; }
+.rq-table td:last-child { width: 1%; }
+.rq-narrow-qty, .rq-narrow-dept { display: none; }
+/* Columns step aside as the list narrows (container widths): Qty and Age first, then Dept and Staff, then Resp. */
+@container (max-width: 1100px) { .rq-c3 { display: none; } .rq-narrow-qty { display: inline; } }
+@container (max-width: 900px) { .rq-c2 { display: none; } .rq-narrow-dept { display: inline-flex; margin-left: 6px; vertical-align: middle; } }
+@container (max-width: 700px) { .rq-c1 { display: none; } }
+
+/* Timers: a still-running clock reads lighter and carries the target's colour once it is close. */
+.tm { white-space: nowrap; }
+.tm.live { font-style: italic; }
+.tm.warn { color: var(--warn); font-weight: 600; }
+.tm.bad { color: var(--bad); font-weight: 600; }
+.tm-none { color: var(--fg-2); }
+
+/* ---------- cards (phones and narrow lists) ---------- */
+.rq-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.rq-card { background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); overflow: hidden; }
+.rq-card[aria-current="true"] { border-color: var(--accent-strong); }
+.rq-card-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 12px; align-items: start; width: 100%; padding: 12px 14px 10px; text-align: left; }
+.rq-card-main:hover { background: var(--fill); }
+.rq-card-main .room { grid-row: span 2; }
+.rq-card-title { font: 600 1rem/1.3 var(--font); overflow-wrap: anywhere; }
+.rq-card-meta { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; color: var(--fg-2); font: 400 0.8125rem/1.4 var(--font); }
+.rq-card-times { grid-column: 1 / 4; display: flex; flex-wrap: wrap; gap: 4px 14px; font: 400 0.8125rem var(--font); color: var(--fg-2); }
+.rq-card-times b { font-weight: 600; color: var(--fg); }
+.rq-card-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 14px 12px; }
+
+/* ---------- drawer ---------- */
+.rq-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; margin: 0; padding: 12px 16px; }
+.rq-facts div { min-width: 0; }
+.rq-facts dt { font: 600 0.75rem var(--font); color: var(--fg-2); }
+.rq-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.rq-remark { margin: 0 16px 12px; padding: 10px 12px; border-radius: 10px; background: var(--fill); overflow-wrap: anywhere; }
+.rq-sec { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+.rq-sec .group-title { flex: 1; }
+.rq-hist { list-style: none; margin: 0; padding: 8px 16px 12px; display: grid; gap: 4px; font: 400 0.8125rem/1.4 var(--font); border-top: 1px solid var(--sep); }
+.rq-hist li { overflow-wrap: anywhere; }
+.rq-hist .c2 { white-space: nowrap; }
+.rq-itm { padding: 12px 16px; display: grid; gap: 6px; }
+.rq-itm + .rq-itm { border-top: 1px solid var(--sep); }
+.rq-itm.off { background: color-mix(in srgb, var(--fill) 55%, var(--surface)); }
+.rq-itm-top { display: flex; align-items: flex-start; gap: 8px; }
+.rq-itm-top h3 { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.rq-itm-code { color: var(--fg-2); font: 600 0.8125rem var(--font); margin-right: 6px; }
+.rq-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; color: var(--fg-2); font: 400 0.8125rem/1.4 var(--font); margin: 0; }
+.rq-meta b { color: var(--fg); font-weight: 600; }
+.rq-link { color: var(--d-fnb); font: 500 0.8125rem/1.4 var(--font); margin: 0; overflow-wrap: anywhere; }
+.rq-strip { margin: 0; padding: 6px 10px; border-radius: 8px; background: var(--warn-soft); color: var(--warn); font: 500 0.875rem var(--font); }
+.rq-acts-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+.rq-inline { display: grid; gap: 10px; padding: 12px; border-radius: 12px; background: var(--fill); }
+.rq-inline .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 10px; }
+.rq-inline-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---------- forms ---------- */
+.rq-form { display: grid; gap: 14px; padding-top: 4px; }
+.rq-field { display: grid; gap: 0; min-width: 0; }
+.rq-field .field[aria-invalid="true"] { border-color: var(--bad); box-shadow: 0 0 0 1px var(--bad); }
+.rq-err { margin: 0.3rem 0 0; color: var(--bad); font: 600 0.8125rem/1.4 var(--font); }
+.rq-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 14px; align-items: start; }
+.rq-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.rq-row { border: 1px solid var(--sep); border-radius: 12px; padding: 10px 12px 12px; background: var(--surface); display: grid; gap: 10px; }
+.rq-row-head { display: flex; align-items: center; justify-content: space-between; min-height: var(--hit-sm); font: 600 0.875rem var(--font); color: var(--fg-2); }
+.rq-row-grid { display: grid; grid-template-columns: minmax(0, 1.3fr) 8.5rem minmax(0, 1.5fr); gap: 10px; align-items: start; }
+.rq-row-grid > :first-child { grid-column: 1 / -1; }
+@media (max-width: 520px) { .rq-row-grid { grid-template-columns: minmax(0, 1fr) 8.5rem; } .rq-row-grid > :last-child { grid-column: 1 / -1; } }
+.rq-readonly { min-height: var(--hit); display: flex; align-items: center; padding: 0 0.9rem; border-radius: var(--r-input); background: var(--fill); color: var(--fg-2); overflow-wrap: anywhere; }
+.rq-qty { display: grid; grid-template-columns: var(--hit-sm) minmax(0, 1fr) var(--hit-sm); align-items: center; border: 1px solid color-mix(in srgb, var(--fg) 28%, transparent); border-radius: var(--r-input); min-height: var(--hit); background: var(--surface); }
+.rq-qty input { width: 100%; border: 0; background: none; text-align: center; min-height: 2.5rem; padding: 0; -moz-appearance: textfield; }
+.rq-qty input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.rq-qty button { height: 100%; min-height: var(--hit-sm); display: grid; place-items: center; font: 600 1.125rem var(--font); color: var(--accent-strong); }
+.rq-qty button[disabled] { color: var(--fg-2); opacity: 0.5; }
+.rq-combo { position: relative; }
+.rq-options { position: absolute; z-index: 5; left: 0; right: 0; top: calc(100% + 4px); max-height: 16rem; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface); border: 1px solid var(--sep); border-radius: 12px; box-shadow: var(--shadow); }
+.rq-options li { display: flex; justify-content: space-between; gap: 8px; min-height: var(--hit-sm); align-items: center; padding: 0 10px; border-radius: 8px; cursor: pointer; }
+.rq-options li[aria-selected="true"] { background: var(--accent-soft); color: var(--accent-strong); }
+.rq-options li span:last-child { color: var(--fg-2); font-size: 0.8125rem; white-space: nowrap; }
+.rq-options li.other { border-top: 1px solid var(--sep); border-radius: 0 0 8px 8px; font-weight: 600; }
+.rq-foot { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; padding-top: 6px; }
+.rq-foot .btn-fill { min-width: 9rem; }

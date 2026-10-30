@@ -146,7 +146,7 @@ final class Azl_Snapshot {
 		$i    = Azl_Db::t( 'items' );
 		$open = Azl_Rules::OPEN_STATUSES;
 		$reqs = Azl_Db::rows(
-			"SELECT id, ticket_no, room, source, remarks, logged_by, created_at, incomplete, vip, safety_id FROM $r r
+			"SELECT id, ticket_no, room, source, remarks, logged_by, created_at, incomplete, vip, safety_id, hdo, staff_name FROM $r r
 			  WHERE r.created_at > %d
 			     OR EXISTS (SELECT 1 FROM $i x WHERE x.request_id = r.id AND x.status IN (" . Azl_Db::in( $open ) . '))
 			  ORDER BY r.created_at DESC, r.id DESC
@@ -174,6 +174,8 @@ final class Azl_Snapshot {
 			$by_req[ $x['request_id'] ][] = $x['id'];
 		}
 		$requests = array();
+		// The ticket's own history (Logged, Details added, and the Edit ticket changes "Room: 412 → 414").
+		$req_logs = self::logs( 'request', array_column( $reqs, 'id' ) );
 		foreach ( $reqs as $q ) {
 			$requests[] = self::opt(
 				array(
@@ -188,6 +190,9 @@ final class Azl_Snapshot {
 					'incomplete' => '1' === (string) $q['incomplete'],
 					'vip'        => '1' === (string) $q['vip'],
 					'safetyId'   => $q['safety_id'],
+					'hdo'        => $q['hdo'],
+					'staffName'  => $q['staff_name'],
+					'events'     => $req_logs[ $q['id'] ] ?? null,
 				)
 			);
 		}
@@ -215,6 +220,13 @@ final class Azl_Snapshot {
 				'xFrom'       => $i['x_from'],
 				'woId'        => $i['wo_id'],
 				'stBeforeEsc' => $i['st_before_esc'],
+				// Schema 3 (Requests parity); `?? null` keeps the desk readable during the upgrade itself.
+				'relayedBy'   => $i['relayed_by'] ?? null,
+				'onSiteAt'    => self::int_or_null( $i['on_site_at'] ?? null ),
+				'prevStatus'  => $i['prev_status'] ?? null,
+				'xKind'       => $i['x_kind'] ?? null,
+				'xNote'       => $i['x_note'] ?? null,
+				'remarks'     => $i['remarks'] ?? null,
 				'events'      => $events,
 			)
 		);
@@ -232,8 +244,10 @@ final class Azl_Snapshot {
 			array( $since, $since )
 		);
 		$logs  = self::logs( 'work_order', array_column( $rows, 'id' ) );
+		$notes = Azl_Updates::list( 'work_order', array_column( $rows, 'id' ) );
 		$out   = array();
 		foreach ( $rows as $x ) {
+			// Wave 2 columns (Azl_Module_WorkOrders); `?? null` keeps a site that has not upgraded yet working.
 			$out[] = self::opt(
 				array(
 					'id'         => $x['id'],
@@ -255,6 +269,18 @@ final class Azl_Snapshot {
 					'targetEnd'  => self::int_or_null( $x['target_end'] ),
 					'srcItemId'  => $x['src_item_id'],
 					'audit'      => $logs[ $x['id'] ] ?? array(),
+					'reporterDept'    => $x['reporter_dept'] ?? null,
+					'requestedDate'   => self::int_or_null( $x['requested_date'] ?? null ),
+					'targetStart'     => self::int_or_null( $x['target_start'] ?? null ),
+					'assignee'        => $x['assignee'] ?? null,
+					'assessedBy'      => $x['assessed_by'] ?? null,
+					'assessedAt'      => self::int_or_null( $x['assessed_at'] ?? null ),
+					'actualStart'     => self::int_or_null( $x['actual_start'] ?? null ),
+					'actualEnd'       => self::int_or_null( $x['actual_end'] ?? null ),
+					'holdReason'      => $x['hold_reason'] ?? null,
+					'completionNotes' => $x['completion_notes'] ?? null,
+					'schedDate'       => self::int_or_null( $x['sched_date'] ?? null ),
+					'updates'         => $notes[ $x['id'] ] ?? array(),
 				)
 			);
 		}
@@ -266,7 +292,7 @@ final class Azl_Snapshot {
 		$e     = Azl_Db::t( 'events' );
 		$since = $now - self::CLEAN_DONE_HOURS * 3600000;
 		$rows  = Azl_Db::rows(
-			"SELECT id, room, type, status, assignee FROM $c c
+			"SELECT * FROM $c c
 			  WHERE c.status <> 'done' OR c.created_at > %d
 			     OR EXISTS (SELECT 1 FROM $e e WHERE e.entity = 'clean_task' AND e.entity_id = c.id AND e.created_at > %d)
 			  ORDER BY c.room, c.created_at",
@@ -281,6 +307,13 @@ final class Azl_Snapshot {
 					'type'     => $x['type'],
 					'status'   => $x['status'],
 					'assignee' => $x['assignee'],
+					// Wave 2 columns (Azl_Module_Cleaning).
+					'role'       => $x['role'] ?? null,
+					'schedDate'  => self::int_or_null( $x['sched_date'] ?? null ),
+					'checkoutAt' => self::int_or_null( $x['checkout_at'] ?? null ),
+					'clockIn'    => self::int_or_null( $x['clock_in'] ?? null ),
+					'clockOut'   => self::int_or_null( $x['clock_out'] ?? null ),
+					'createdAt'  => (int) $x['created_at'],
 				)
 			);
 		}

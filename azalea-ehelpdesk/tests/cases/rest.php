@@ -207,7 +207,7 @@ test(
 			ok( ! $changeable || ( false !== strpos( $sql, 'created_at bigint' ) && false !== strpos( $sql, 'updated_at bigint' ) ), "$m[1] has created_at and updated_at" );
 		}
 		ok( false !== strpos( implode( '', Azl_Schema::sql() ), 'UNIQUE KEY op_entity_what (op_id,entity_id,what)' ), 'events unique on op + entity + what' );
-		eq( Azl_Schema::VERSION, get_option( 'azl_db_version' ) );
+		eq( Azl_Schema::db_version(), get_option( 'azl_db_version' ) ); // VERSION plus the registered modules
 		eq( array( 'change', 'cr', 'hs', 'inc', 'inq', 'ticket', 'tr', 'wo' ), array_column( Azl_Db::rows( 'SELECT name FROM ' . Azl_Db::t( 'seq' ) . ' ORDER BY name' ), 'name' ) );
 		cmd( array( 'type' => 'ackHandover', 'handoverId' => id() ) );
 		Azl_Schema::install();
@@ -215,7 +215,7 @@ test(
 		eq( 1, (int) Azl_Db::val( 'SELECT COUNT(*) FROM ' . Azl_Db::t( 'handovers' ) ), 'and the data' );
 		delete_option( 'azl_db_version' );
 		Azl_Schema::maybe_upgrade();
-		eq( Azl_Schema::VERSION, get_option( 'azl_db_version' ) );
+		eq( Azl_Schema::db_version(), get_option( 'azl_db_version' ) );
 	}
 );
 
@@ -264,12 +264,12 @@ test(
 		eq( array( 't' => 1, 'wo' => 0, 'inc' => 0, 'id' => 0 ), $s['seq'] );
 		eq( Azl_Db::now(), $s['at'] );
 		eq(
-			array( 'id' => $request, 'ticket' => 'T-0001', 'room' => '501', 'source' => 'staff', 'remarks' => 'Guest asleep', 'loggedBy' => MARIA, 'createdAt' => Azl_Db::now(), 'itemIds' => $items, 'incomplete' => false, 'vip' => true ),
+			array( 'id' => $request, 'ticket' => 'T-0001', 'room' => '501', 'source' => 'staff', 'remarks' => 'Guest asleep', 'loggedBy' => MARIA, 'createdAt' => Azl_Db::now(), 'itemIds' => $items, 'incomplete' => false, 'vip' => true, 'hdo' => MARIA, 'events' => array( array( 'at' => Azl_Db::now(), 'by' => MARIA, 'what' => 'Logged' ) ) ),
 			$s['requests'][0]
 		);
 		$it = $s['items'][ $items[0] ];
 		eq(
-			array( 'id', 'requestId', 'name', 'qty', 'dept', 'assignee', 'status', 'createdAt', 'ackAt', 'heldMs', 'slaMin', 'events' ),
+			array( 'id', 'requestId', 'name', 'qty', 'dept', 'assignee', 'status', 'createdAt', 'ackAt', 'heldMs', 'slaMin', 'relayedBy', 'prevStatus', 'events' ),
 			array_keys( $it )
 		);
 		has( array( 'qty' => 1, 'status' => 'relayed', 'assignee' => JOEL, 'heldMs' => 0, 'slaMin' => 10 ), $it );

@@ -1,0 +1,54 @@
+/* Inquiries and Reminders: only what src/styles.css does not already give them. Hotel tokens only (--azl-* through --fg, --sep ...). */
+
+.mod-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-bottom: 12px; }
+.mod-filters { display: grid; gap: 10px; margin-bottom: 4px; }
+.mod-range { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; }
+.mod-range .mod-field { flex: 1 1 9rem; min-width: 0; }
+.mod-range .chip[aria-pressed="true"] { background: var(--accent-strong); color: var(--on-accent); }
+.mod-count { margin: 10px 4px 0; }
+
+.mod-form { display: grid; gap: 14px; padding-top: 4px; }
+.mod-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 14px; }
+.mod-field { min-width: 0; }
+.mod-error { margin: 0.3rem 0 0; color: var(--bad); font: 600 0.8125rem/1.4 var(--font); }
+input.field[aria-invalid="true"], textarea.field[aria-invalid="true"], select.field[aria-invalid="true"] { border-color: var(--bad); box-shadow: inset 0 0 0 1px var(--bad); }
+.mod-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+.mod-actions .btn { min-width: 7.5rem; }
+
+/* ---------- inquiry cards ---------- */
+.inq { display: grid; grid-template-columns: minmax(0, 1fr); background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); overflow: hidden; }
+.inq-main { display: grid; gap: 6px; padding: 14px 16px 6px; text-align: left; width: 100%; color: inherit; }
+.inq-main:hover { background: var(--fill); }
+.inq-main:focus-visible { outline-offset: -3px; }
+.inq-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.inq-no { font-weight: 700; font-variant-numeric: tabular-nums; }
+.inq-name { font: 600 1.0625rem/1.3 var(--font); overflow-wrap: anywhere; }
+.inq-desc { margin: 0; overflow-wrap: anywhere; }
+.inq-foot { display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.inq-acts { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px 14px; }
+.inq.is-done .inq-name, .inq.is-done .inq-desc { color: var(--fg-2); }
+@media (min-width: 768px) {
+  .inq { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .inq-acts { padding: 14px 16px 14px 0; justify-content: flex-end; min-width: 11rem; }
+  .inq-main { padding-bottom: 14px; }
+}
+
+/* ---------- reminder cards ---------- */
+.rem-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 10px; }
+.rem { display: grid; align-content: start; gap: 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); height: 100%; }
+.rem.is-late { background: color-mix(in srgb, var(--bad-soft) 55%, var(--surface)); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.rem.is-done { background: color-mix(in srgb, var(--fill) 55%, var(--surface)); }
+.rem.is-done .rem-desc { color: var(--fg-2); }
+.rem-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.rem-desc { margin: 0; font: 600 1rem/1.35 var(--font); overflow-wrap: anywhere; }
+.rem-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--fg-2); font: 400 0.875rem/1.4 var(--font); }
+.rem-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.rem-notes { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.rem-link { display: inline-flex; align-items: center; min-height: 1.5rem; padding: 0 0.6rem; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent-strong); font: 600 0.75rem var(--font); }
+.rem .btn { justify-self: start; }
+
+/* ---------- detail ---------- */
+.mod-detail { display: grid; gap: 14px; }
+.mod-dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 16px; margin: 0; padding: 14px 16px; }
+.mod-dl dt { color: var(--fg-2); font: 600 0.8125rem/1.5 var(--font); }
+.mod-dl dd { margin: 0; overflow-wrap: anywhere; }
