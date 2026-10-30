@@ -20,7 +20,42 @@ export interface Catalog {
   holdReasons: Choice[];
   jobTitles: Choice[];
   woFindings: Choice[];
+  /** Every list's definition (Azl_Catalog::defs()), sent with the lists; missing before the first snapshot. */
+  defs?: ListDef[];
 }
+
+/** One field of a list entry besides key, label and active. dept, icon and parts are the built-in lists' own. */
+export interface FieldDef {
+  name: string;
+  label: string;
+  type: 'text' | 'bool' | 'int' | 'dept' | 'icon' | 'parts';
+  max?: number;
+  min?: number;
+  required?: boolean;
+  default?: unknown;
+}
+
+/**
+ * How to edit one list, from the server (catalog.defs): a module's list arrives with its definition, so the
+ * Configuration page edits it with no desk code. `usedBy`: the records that store its keys (singular, plural).
+ */
+export interface ListDef {
+  key: string;
+  label: string;
+  noun: [string, string];
+  help: string;
+  maxItems: number;
+  fields: FieldDef[];
+  module?: string;
+  usedBy?: [string, string];
+}
+
+/** The hotel profile (Azl_Profile, option azl_settings): the name is the one every page prints. */
+export interface HotelProfile { name: string; short: string; contact: string; address: string; timeZone: string }
+export const PROFILE_MAX = { name: 80, short: 20, contact: 120, address: 200 } as const;
+
+/** A module list entry: key, label, active and its declared fields. */
+export type ModuleEntry = Choice & Record<string, unknown>;
 
 export type ListName = 'departments' | 'requestTypes' | 'bundles' | 'holdReasons' | 'jobTitles' | 'woFindings';
 export type Entry = Department | RequestType | Bundle | Choice;
@@ -33,6 +68,8 @@ export interface Usage {
   holdReasons: Record<string, { requests?: number }>;
   /** Work orders not done yet. */
   openWorkOrders?: number;
+  /** Module lists whose keys records store: list => key => number of records. */
+  lists?: Record<string, Record<string, number>>;
 }
 
 /** The lists and how much each department and hold reason is used. */
@@ -51,11 +88,34 @@ export const MAX: Record<ListName, number> = { departments: 40, requestTypes: 80
 /** Titles and one line of plain-language help for the Lists screen. */
 export const LIST_META: Record<ListName, { title: string; one: string; help: string }> = {
   departments: { title: 'Departments', one: 'department', help: 'The teams that receive requests, like Housekeeping or Spa. Each has a short code for the badges.' },
-  requestTypes: { title: 'Request types', one: 'request type', help: 'The buttons on a new request. Each goes to one department with a target time.' },
+  requestTypes: { title: 'Service items', one: 'service item', help: 'The buttons on a new request. Each goes to one department with a target time.' },
   bundles: { title: 'Bundles', one: 'bundle', help: 'One tap that sends several steps to different teams, like a leak: fix, then clean.' },
   holdReasons: { title: 'Hold reasons', one: 'hold reason', help: 'Why a job is waiting. The clock pauses while it is on hold.' },
   jobTitles: { title: 'Job titles', one: 'job title', help: 'Suggestions when you add a person. You can still type any title.' },
   woFindings: { title: 'Work-order findings', one: 'finding', help: 'Quick answers when someone assesses a repair. They can still type their own.' },
+};
+
+const NOUNS: Record<ListName, [string, string]> = {
+  departments: ['department', 'departments'], requestTypes: ['request type', 'request types'], bundles: ['bundle', 'bundles'],
+  holdReasons: ['hold reason', 'hold reasons'], jobTitles: ['job title', 'job titles'], woFindings: ['finding', 'findings'],
+};
+const BUILTIN_FIELDS: Partial<Record<ListName, FieldDef[]>> = {
+  departments: [{ name: 'short', label: 'badge', type: 'text', max: LIMITS.short, required: true }, { name: 'repairs', label: 'handles repairs', type: 'bool', default: false }],
+  requestTypes: [{ name: 'dept', label: 'department', type: 'dept', required: true }, { name: 'slaMin', label: 'target (minutes)', type: 'int', min: 1, max: LIMITS.slaMin }, { name: 'icon', label: 'icon', type: 'icon' }],
+  bundles: [{ name: 'hint', label: 'what it does', type: 'text', max: LIMITS.hint }, { name: 'parts', label: 'steps', type: 'parts', max: LIMITS.parts }],
+};
+/** The built-in lists' definitions: what the server sends for them, used until the first snapshot arrives. */
+export const BUILTIN_DEFS: ListDef[] = LISTS.map((key) => ({ key, label: LIST_META[key].title, noun: NOUNS[key], help: LIST_META[key].help, maxItems: MAX[key], fields: BUILTIN_FIELDS[key] ?? [] }));
+
+/** Every list's definition: the server's, else the built-in ones. */
+export const defsOf = (cat: Catalog): ListDef[] => (Array.isArray(cat.defs) && cat.defs.length ? cat.defs : BUILTIN_DEFS);
+/** One list's definition, or undefined when the server does not know it. */
+export const defOf = (cat: Catalog, list: string): ListDef | undefined => defsOf(cat).find((d) => d.key === list) ?? BUILTIN_DEFS.find((d) => d.key === list);
+export const isBuiltin = (list: string): list is ListName => (LISTS as string[]).includes(list);
+/** A list's entries, built-in or a module's (an unknown or missing list is empty). */
+export const entriesOf = (cat: Catalog, list: string): Entry[] => {
+  const v = (cat as unknown as Record<string, unknown>)[list];
+  return Array.isArray(v) ? (v as Entry[]) : [];
 };
 
 /** The icons a request type may use (Azl_Catalog::ICONS in PHP), with a name for the picker. All exist in ui/icons.ts. */
@@ -158,8 +218,19 @@ export function catalogUsers(cat: Catalog, dept: string, activeOnly: boolean): s
   ];
 }
 
+/** "3 trips": how many records use a module list's entry, or '' when none (or the list stores no keys). */
+export function recordsText(cat: Catalog, list: string, key: string, usage: Usage | null): string {
+  const n = usage?.lists?.[list]?.[key] ?? 0;
+  const noun = defOf(cat, list)?.usedBy;
+  return n > 0 && noun ? plural(n, noun[0], noun[1]) : '';
+}
+
 /** Why this saved entry cannot be deleted, or '' when it can. */
-export function deleteBlocker(list: ListName, key: string, cat: Catalog, usage: Usage | null): string {
+export function deleteBlocker(list: string, key: string, cat: Catalog, usage: Usage | null): string {
+  if (!isBuiltin(list)) {
+    const used = recordsText(cat, list, key, usage);
+    return used ? `Used by ${used}. Archive it instead.` : '';
+  }
   if (list === 'departments') {
     const used = usageText(usage?.departments[key]);
     if (used) return `Used by ${used}. Archive it instead.`;
@@ -181,8 +252,10 @@ const clean = (s: unknown) => (typeof s === 'string' ? s.replace(/<[^>]*>/g, '')
 const goodSla = (n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= LIMITS.slaMin;
 
 /** The first problem with an edited list, worded like the server, or null. `cat` is the catalog it was loaded from. */
-export function validateList(list: ListName, items: Draft[], cat: Catalog, openWorkOrders = 0): Problem | null {
-  if (items.length > MAX[list]) return { error: `Keep the list to ${MAX[list]} ${LIST_META[list].title.toLowerCase()}.` };
+export function validateList(list: string, items: Draft[], cat: Catalog, openWorkOrders = 0): Problem | null {
+  const def = defOf(cat, list);
+  if (!def) return { error: 'Unknown list.' };
+  if (items.length > def.maxItems) return { error: `Keep the list to ${def.maxItems} ${def.noun[1]}.` };
   const labels = new Set<string>();
   const deptOk = (dept: string, active: boolean) => {
     const d = cat.departments.find((x) => x.key === dept);
@@ -221,9 +294,13 @@ export function validateList(list: ListName, items: Draft[], cat: Catalog, openW
         if (p.after != null && !(Number.isInteger(p.after) && p.after >= 0 && p.after < j)) return { index, error: `Step ${n} can only wait for an earlier step.` };
       }
     }
+    if (!isBuiltin(list)) {
+      const bad = fieldProblem(def.fields, x as unknown as Record<string, unknown>);
+      if (bad) return { index, error: bad };
+    }
   }
   if ((list === 'departments' || list === 'holdReasons') && !items.some((x) => x.active)) {
-    return { error: `Keep at least one active ${LIST_META[list].one}.` };
+    return { error: `Keep at least one active ${def.noun[0]}.` };
   }
   if (list === 'departments') {
     for (const [index, d] of items.entries()) {
@@ -236,4 +313,23 @@ export function validateList(list: ListName, items: Draft[], cat: Catalog, openW
     return { error: `${openWorkOrders} open work order${openWorkOrders === 1 ? '' : 's'} need a department that handles repairs. Keep at least one active one.` };
   }
   return null;
+}
+
+/** A module list entry's declared fields, worded like Azl_Catalog::module_entry(), or '' when they are fine. */
+export function fieldProblem(fields: FieldDef[], x: Record<string, unknown>): string {
+  for (const f of fields) {
+    const v = x[f.name] ?? f.default;
+    if (f.type === 'bool') {
+      if (v != null && typeof v !== 'boolean') return `Choose yes or no for ${f.label}.`;
+    } else if (f.type === 'int') {
+      const min = f.min ?? 0, max = f.max ?? Number.MAX_SAFE_INTEGER;
+      if (!Number.isInteger(v) || (v as number) < min || (v as number) > max) return `Enter a whole number for ${f.label} from ${min} to ${max}.`;
+    } else if (f.type === 'text') {
+      const t = clean(v ?? '');
+      const max = f.max ?? LIMITS.label;
+      if (f.required && !t) return `Enter the ${f.label}.`;
+      if (t.length > max) return `Keep the ${f.label} under ${max} characters.`;
+    }
+  }
+  return '';
 }

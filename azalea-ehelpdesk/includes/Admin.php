@@ -135,7 +135,13 @@ final class Azl_Admin {
 			'rooms'               => array_slice( $rooms, 0, 2000 ),
 			'poll_seconds'        => max( 5, min( 30, absint( $input['poll_seconds'] ?? 5 ) ) ),
 			'delete_on_uninstall' => ! empty( $input['delete_on_uninstall'] ),
-		);
+		) + self::kept_profile();
+	}
+
+	/** The hotel profile fields the desk edits (Azl_Profile) that this page does not show: kept as they are. */
+	private static function kept_profile() {
+		$saved = get_option( self::OPTION, array() );
+		return array_intersect_key( is_array( $saved ) ? $saved : array(), array_flip( array( 'property_short', 'property_contact', 'property_address' ) ) );
 	}
 
 	/** Property name field. */

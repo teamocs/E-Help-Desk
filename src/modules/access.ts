@@ -29,6 +29,20 @@ export const MATRIX: Matrix = {
 };
 // END MATRIX
 
+/**
+ * Commands a reader may still run (need 'report' on the server): B.3 "report only", so department staff whose
+ * department does not handle repairs (Work Orders: read) can still report a work order.
+ */
+export const REPORT_COMMANDS: Record<string, string> = { reportWo: 'workorders' };
+
+/** The refusal for a read-level actor, as Azl_Access::refusal words it; '' when a reader may run this command. */
+export function readRefusal(module: string, type: string, label: string = LABELS[module] ?? module): string {
+  if (REPORT_COMMANDS[type] === module) return '';
+  return Object.values(REPORT_COMMANDS).includes(module)
+    ? `You can report a new one in ${label}, but only the help desk or the team that handles it can change it.`
+    : `Your role can only view ${label}.`;
+}
+
 /** The department whose staff run Cleaning (Azl_Access::CLEANING_DEPT). */
 export const CLEANING_DEPT = 'housekeeping';
 

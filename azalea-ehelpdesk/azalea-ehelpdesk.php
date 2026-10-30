@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Azalea e-Helpdesk
  * Description:       Live service-request, maintenance and safety desk for one hotel property, served at /helpdesk/.
- * Version:           0.4.0
+ * Version:           0.5.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Online Creative Solutions
@@ -19,7 +19,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AZL_EHD_VERSION', '0.4.0' );
+define( 'AZL_EHD_VERSION', '0.5.0' );
 define( 'AZL_EHD_FILE', __FILE__ );
 define( 'AZL_EHD_DIR', plugin_dir_path( __FILE__ ) );
 /** Bump when the rewrite rules change, so they are flushed once after an update (never on every request). */

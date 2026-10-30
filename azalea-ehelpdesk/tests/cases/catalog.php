@@ -123,7 +123,7 @@ test(
 		eq( $out['catalog'], Azl_Catalog::get() );
 		eq( $change + 1, Azl_Db::counter( 'change' ), 'phones see the change on their next poll' );
 		eq( $change + 1, Azl_Snapshot::load()['rev'], 'the snapshot rev moves with it' );
-		eq( $out['catalog'], Azl_Snapshot::load()['catalog'], 'the snapshot carries the lists' );
+		eq( Azl_Catalog::for_desk( $out['catalog'] ), Azl_Snapshot::load()['catalog'], 'the snapshot carries the lists, with their defs' );
 		eq( 'x_2', Azl_Catalog::make_key( 'x', array() ), 'one-letter labels get a suffix' );
 		eq( 'housekeeping_2', Azl_Catalog::make_key( 'Housekeeping', array( 'housekeeping' => true ) ) );
 		eq( 'abcdefghijklmnopqr_2', Azl_Catalog::make_key( 'abcdefghijklmnopqrstuvwxyz', array( 'abcdefghijklmnopqrst' => true ) ) );
@@ -411,7 +411,7 @@ test(
 		$got = Azl_Rest::catalog( new WP_REST_Request( 'GET' ) );
 		eq( 200, $got->get_status() );
 		eq( 'no-store, max-age=0', $got->get_headers()['Cache-Control'] );
-		has( array( 'ok' => true, 'catalog' => Azl_Catalog::get() ), $got->get_data() );
+		has( array( 'ok' => true, 'catalog' => Azl_Catalog::for_desk( Azl_Catalog::get() ) ), $got->get_data() );
 		$req = static function ( string $list, $body ) {
 			$r = new WP_REST_Request( 'PUT' );
 			$r->set_param( 'list', $list );

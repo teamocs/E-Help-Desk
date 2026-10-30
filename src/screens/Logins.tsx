@@ -54,7 +54,7 @@ export function Logins() {
 
   return (
     <>
-      <Group title="Logins" note="People who sign in with their own email: managers, supervisors and shared phones. Staff who use a PIN are listed under Staff.">
+      <Group note="People who sign in with their own email: managers, supervisors and shared phones. Staff who use a PIN are listed under Staff.">
         {loadErr && <div className="row" role="alert"><span className="grow" style={{ color: 'var(--bad)' }}>{loadErr}</span><Button size="sm" variant="gray" onClick={() => void load()}>Try again</Button></div>}
         {!list && !loadErr && <div className="row c2" role="status">Loading logins…</div>}
         {list?.filter((a) => !a.self).length === 0 && <div className="row c2">No other logins yet. Add the first one below.</div>}
@@ -71,7 +71,7 @@ export function Logins() {
       </Group>
 
       <form onSubmit={add} noValidate>
-        <h2 className="group-title">Add login</h2>
+        <h3 className="group-title">Add login</h3>
         <div className="group" style={{ padding: 16, display: 'grid', gap: 14 }}>
           <div>
             <label className="field-label" htmlFor="lg-name">Name</label>

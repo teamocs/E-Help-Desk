@@ -57,7 +57,8 @@ abstract class Azl_Module {
 	 *   return Azl_Commands::ok( ... ) or Azl_Commands::fail( 'reason' ).
 	 * - validate: callable( array $cmd ): ?string, a plain-language problem or null. Runs before run().
 	 * - ids: id fields the command must carry (each *Id field is checked to be a uuid anyway).
-	 * - need: 'own' (default: own or full access) or 'full'.
+	 * - need: 'own' (default: own or full access), 'full', or 'report' (read access is enough: creating a new record that
+	 *   a reader may report, like reportWo for a department that does not handle repairs).
 	 * - scope: callable( array $cmd, array $who ): bool, for actors with own access: true when the row is theirs.
 	 * - prior: callable( string $entity_id ): array, extra result fields for a replayed op (like a number).
 	 * - module: the module the command belongs to (default: this module).
@@ -77,10 +78,23 @@ abstract class Azl_Module {
 	 *   'maxItems' => 20,
 	 *   'fields'   => array( array( 'name' => 'plate', 'type' => 'text', 'max' => 20, 'required' => false ) ), // text, bool or int
 	 *   'seed'     => array( array( 'label' => 'Van 1', 'plate' => '' ) ),
-	 * ). Every entry also has key, label and active, like the built-in lists.
+	 *   'title'    => 'Vehicles',                       // optional: the Configuration heading (default: the plural, capitalised)
+	 *   'help'     => 'The hotel cars and vans.',       // optional: one plain line under the heading
+	 *   'uses'     => array( 'table' => 'trips', 'column' => 'vehicle_key', 'noun' => array( 'trip', 'trips' ) ),
+	 * ). Every entry also has key, label and active, like the built-in lists. 'uses' names the records that store an
+	 * entry's key: such an entry cannot be deleted while records use it (archive it instead). The Configuration page
+	 * shows every list from Azl_Catalog::defs(), so a new list needs no desk code.
 	 */
 	public function catalogLists(): array {
 		return array();
+	}
+
+	/**
+	 * The refusal shown when an actor with own access fails a command's scope check, or null for the default ("You can
+	 * only work on items of your own department."). For example Transport: "Only the help desk can log ... trips."
+	 */
+	public function ownRefusal( string $type ): ?string {
+		return null;
 	}
 
 	/**
@@ -117,7 +131,7 @@ final class Azl_Modules {
 			}
 		}
 		foreach ( array_keys( $m->catalogLists() ) as $key ) {
-			if ( ! is_string( $key ) || ! preg_match( '/^[a-z][A-Za-z0-9]{1,39}\z/', $key ) || in_array( $key, Azl_Catalog::LISTS, true ) || isset( self::lists()[ $key ] ) ) {
+			if ( ! is_string( $key ) || ! preg_match( '/^[a-z][A-Za-z0-9]{1,39}\z/', $key ) || in_array( $key, array_merge( Azl_Catalog::LISTS, array( 'catalogRev', 'defs' ) ), true ) || isset( self::lists()[ $key ] ) ) {
 				throw new InvalidArgumentException( "Module $id: list $key is not valid or already taken" );
 			}
 		}

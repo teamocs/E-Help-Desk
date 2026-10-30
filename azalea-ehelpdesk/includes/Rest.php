@@ -53,6 +53,9 @@ final class Azl_Rest {
 			'/catalog/(?P<list>' . implode( '|', Azl_Catalog::lists() ) . ')',
 			array( 'methods' => 'PUT', 'callback' => array( self::class, 'put_catalog' ), 'permission_callback' => array( self::class, 'can_manage_lists' ) )
 		);
+		// The hotel profile (Configuration): every desk role reads it, only the hotel owner (and administrators) edit it.
+		register_rest_route( self::NS, '/profile', array( 'methods' => 'GET', 'callback' => array( Azl_Profile::class, 'rest_get' ), 'permission_callback' => $desk ) );
+		register_rest_route( self::NS, '/profile', array( 'methods' => 'PUT', 'callback' => array( Azl_Profile::class, 'rest_put' ), 'permission_callback' => array( self::class, 'can_manage_profile' ) ) );
 	}
 
 	/* ---------- permissions ---------- */
@@ -71,6 +74,11 @@ final class Azl_Rest {
 
 	public static function can_manage_lists(): bool {
 		return current_user_can( Azl_Caps::MANAGE_LISTS );
+	}
+
+	/** The hotel profile: the hotel owner and administrators (the accounts that manage logins). */
+	public static function can_manage_profile(): bool {
+		return current_user_can( Azl_Caps::MANAGE_ACCOUNTS );
 	}
 
 	/* ---------- routes ---------- */
@@ -183,7 +191,7 @@ final class Azl_Rest {
 	public static function catalog( $request ) {
 		return self::guard(
 			static function () {
-				return self::reply( array( 'ok' => true, 'catalog' => Azl_Catalog::get(), 'usage' => Azl_Catalog::usage() ) );
+				return self::reply( array( 'ok' => true, 'catalog' => Azl_Catalog::for_desk( Azl_Catalog::get() ), 'usage' => Azl_Catalog::usage() ) );
 			}
 		);
 	}
@@ -200,6 +208,9 @@ final class Azl_Rest {
 					return self::reply( array( 'ok' => false, 'code' => 'azl_invalid', 'error' => 'Send the list as JSON.' ), 400 );
 				}
 				list( $status, $out ) = Azl_Catalog::save( (string) $request->get_param( 'list' ), $b['items'] ?? null, $b['baseRev'] ?? null );
+				if ( isset( $out['catalog'] ) ) {
+					$out['catalog'] = Azl_Catalog::for_desk( $out['catalog'] ); // saved, or stale: the fresh lists with their defs
+				}
 				return self::reply( $out, $status );
 			}
 		);

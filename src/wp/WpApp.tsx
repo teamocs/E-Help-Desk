@@ -73,6 +73,13 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
       if (r.ok || r.catalog) setCatalog(r.catalog!);
       return r;
     },
+    profile: () => api.getProfile(),
+    saveProfile: async (p) => {
+      if (role !== "owner") return { ok: false, error: "Only the hotel owner can change the hotel profile." };
+      const r = await api.putProfile(p);
+      if (r.ok) void remote.refresh(); // the new name reaches the header with the snapshot
+      return r;
+    },
   };
 
   const tick = async () => {

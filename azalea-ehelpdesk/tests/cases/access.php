@@ -77,14 +77,15 @@ test(
 	'access: who acts comes from the WordPress role, and on a shared phone from the PIN person\'s job role',
 	function () {
 		access_accounts();
-		eq( array( 'kind' => 'owner', 'dept' => null ), Azl_Access::who( ACC_OWNER, null ) );
-		eq( array( 'kind' => 'owner', 'dept' => null ), Azl_Access::who( ACC_ADMIN, null ) );
-		eq( array( 'kind' => 'manager', 'dept' => null ), Azl_Access::who( ACC_MANAGER, JOEL ), 'a manager acting with a PIN stays a manager' );
-		eq( array( 'kind' => 'supervisor', 'dept' => null ), Azl_Access::who( ACC_SUP, null ) );
-		eq( array( 'kind' => 'none', 'dept' => null ), Azl_Access::who( ACC_PHONE, null ), 'shared phone, nobody signed in' );
-		eq( array( 'kind' => 'hdo', 'dept' => 'frontdesk' ), Azl_Access::who( ACC_PHONE, MARIA ) );
-		eq( array( 'kind' => 'staff', 'dept' => 'housekeeping' ), Azl_Access::who( ACC_PHONE, JOEL ) );
-		eq( array( 'kind' => 'supervisor', 'dept' => 'housekeeping' ), Azl_Access::who( ACC_PHONE, LIZA ) );
+		eq( array( 'kind' => 'owner', 'dept' => null, 'staff' => null ), Azl_Access::who( ACC_OWNER, null ) );
+		eq( array( 'kind' => 'owner', 'dept' => null, 'staff' => null ), Azl_Access::who( ACC_ADMIN, null ) );
+		eq( array( 'kind' => 'manager', 'dept' => null, 'staff' => JOEL ), Azl_Access::who( ACC_MANAGER, strtoupper( JOEL ) ), 'a manager acting with a PIN stays a manager; the acting id comes along, lower case' );
+		eq( array( 'kind' => 'supervisor', 'dept' => null, 'staff' => null ), Azl_Access::who( ACC_SUP, null ) );
+		eq( array( 'kind' => 'none', 'dept' => null, 'staff' => null ), Azl_Access::who( ACC_PHONE, null ), 'shared phone, nobody signed in' );
+		eq( array( 'kind' => 'hdo', 'dept' => 'frontdesk', 'staff' => MARIA ), Azl_Access::who( ACC_PHONE, MARIA ) );
+		eq( array( 'kind' => 'staff', 'dept' => 'housekeeping', 'staff' => JOEL ), Azl_Access::who( ACC_PHONE, JOEL ) );
+		eq( array( 'kind' => 'supervisor', 'dept' => 'housekeeping', 'staff' => LIZA ), Azl_Access::who( ACC_PHONE, LIZA ) );
+		eq( array( 'kind' => 'none', 'dept' => null, 'staff' => null ), Azl_Access::who( ACC_PHONE, id() ), 'an unknown id is nobody' );
 		Azl_Db::update( 'staff', array( 'active' => 0 ), array( 'id' => JOEL ) );
 		eq( 'none', Azl_Access::who( ACC_PHONE, JOEL )['kind'], 'a removed person' );
 		eq( 'none', Azl_Access::who( 0, null )['kind'], 'nobody signed in' );

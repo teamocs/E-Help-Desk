@@ -97,24 +97,28 @@ final class Azl_Access {
 
 	const NO_PIN = 'Sign in with your PIN first.';
 	const OWN    = 'You can only work on items of your own department.';
+	/** Read access to a module that has a report command (Work Orders for a department that does not handle repairs). */
+	const REPORT_ONLY = 'You can report a new one in %s, but only the help desk or the team that handles it can change it.';
 
 	/* ---------- who is acting ---------- */
 
 	/**
-	 * The actor kind and department for a WordPress user and the staff member acting with a PIN (or null).
+	 * The actor kind and department for a WordPress user and the staff member acting with a PIN (or null), and that
+	 * staff id (staff: lower case, or null), so modules never read the X-Azl-Actor header again.
 	 *
-	 * @return array{kind: string, dept: ?string}
+	 * @return array{kind: string, dept: ?string, staff: ?string}
 	 */
 	public static function who( int $user_id, ?string $staff_id ): array {
+		$staff = null === $staff_id ? null : strtolower( $staff_id );
 		if ( $user_id <= 0 || ! user_can( $user_id, Azl_Caps::USE_DESK ) ) {
-			return array( 'kind' => 'none', 'dept' => null );
+			return array( 'kind' => 'none', 'dept' => null, 'staff' => null );
 		}
 		if ( user_can( $user_id, Azl_Caps::DIRECT ) ) {
 			// Same order as azl_ehd_desk_role(): administrators hold every azl_* capability.
 			if ( user_can( $user_id, Azl_Caps::MANAGE_ACCOUNTS ) ) {
-				return array( 'kind' => 'owner', 'dept' => null );
+				return array( 'kind' => 'owner', 'dept' => null, 'staff' => $staff );
 			}
-			return array( 'kind' => user_can( $user_id, Azl_Caps::MANAGE_STAFF ) ? 'manager' : 'supervisor', 'dept' => null );
+			return array( 'kind' => user_can( $user_id, Azl_Caps::MANAGE_STAFF ) ? 'manager' : 'supervisor', 'dept' => null, 'staff' => $staff );
 		}
 		return self::staff_kind( $staff_id );
 	}
@@ -123,7 +127,7 @@ final class Azl_Access {
 	public static function staff_kind( ?string $staff_id ): array {
 		$row = null === $staff_id ? null : Azl_Db::row( 'SELECT role, dept FROM ' . Azl_Db::t( 'staff' ) . ' WHERE id = %s AND active = 1', array( strtolower( $staff_id ) ) );
 		if ( null === $row ) {
-			return array( 'kind' => 'none', 'dept' => null );
+			return array( 'kind' => 'none', 'dept' => null, 'staff' => null );
 		}
 		$kind = array(
 			'hdo'        => 'hdo',
@@ -132,7 +136,7 @@ final class Azl_Access {
 			'manager'    => 'manager',
 			'owner'      => 'manager',
 		)[ $row['role'] ] ?? 'none';
-		return array( 'kind' => $kind, 'dept' => $row['dept'] );
+		return array( 'kind' => $kind, 'dept' => $row['dept'], 'staff' => strtolower( $staff_id ) );
 	}
 
 	/* ---------- levels ---------- */
@@ -154,8 +158,9 @@ final class Azl_Access {
 
 	/**
 	 * The actor's level on a module. Department staff's "own" is resolved where B.3 names departments:
-	 * Cleaning is Housekeeping only; Work Orders is full for a department that handles repairs, else read
-	 * (reporting a work order arrives in wave 2). Elsewhere "own" stays: the module limits rows itself.
+	 * Cleaning is Housekeeping only; Work Orders is full for a department that handles repairs, else read, which
+	 * still lets them report one (B.3 "report only": a command declared need 'report', see refusal()). Elsewhere
+	 * "own" stays: the module limits rows itself.
 	 */
 	public static function level( string $module, array $who ): string {
 		$level = self::row( $module )[ $who['kind'] ?? 'none' ] ?? 'none';
@@ -233,8 +238,11 @@ final class Azl_Access {
 		if ( 'none' === $level ) {
 			return 'Your role cannot use ' . self::label( $module ) . '.';
 		}
+		if ( 'read' === $level && 'report' === ( $def['need'] ?? null ) ) {
+			return null; // reporting a new record needs only read access (B.3 "report only")
+		}
 		if ( 'read' === $level ) {
-			return 'Your role can only view ' . self::label( $module ) . '.';
+			return self::reports( $module ) ? sprintf( self::REPORT_ONLY, self::label( $module ) ) : 'Your role can only view ' . self::label( $module ) . '.';
 		}
 		if ( 'own' === $level && 'full' === $need ) {
 			return 'Only a supervisor or manager can do this in ' . self::label( $module ) . '.';
@@ -245,10 +253,28 @@ final class Azl_Access {
 		return null;
 	}
 
-	/** With own access: the row must belong to the actor's department (requests) or pass the module's scope check. */
+	/** True when one of the module's commands may be run with read access (need 'report'). */
+	private static function reports( string $module ): bool {
+		$m = class_exists( 'Azl_Modules' ) ? Azl_Modules::get( $module ) : null;
+		foreach ( null === $m ? array() : $m->commands() as $def ) {
+			if ( 'report' === ( $def['need'] ?? null ) ) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * With own access: the row must belong to the actor's department (requests) or pass the module's scope check. A
+	 * module may word its own refusal (Azl_Module::ownRefusal), else the department message.
+	 */
 	private static function outside_own( string $type, array $cmd, array $who, ?array $def ): ?string {
 		if ( null !== $def ) {
-			return isset( $def['scope'] ) && true !== ( $def['scope'] )( $cmd, $who ) ? self::OWN : null;
+			if ( ! isset( $def['scope'] ) || true === ( $def['scope'] )( $cmd, $who ) ) {
+				return null;
+			}
+			$m = Azl_Modules::get( $def['module'] );
+			return ( null === $m ? null : $m->ownRefusal( $type ) ) ?? self::OWN;
 		}
 		if ( ! in_array( $type, self::ITEM_SCOPED, true ) || 'staff' !== $who['kind'] ) {
 			return null;

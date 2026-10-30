@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 // The desk's own catalog rules (Node runs the TypeScript file directly): seed, validation and the in-use check.
 import { LISTS, SEED_CATALOG, deleteBlocker, validateList } from "../src/domain/catalog.ts";
 // The role matrix (the desk's copy of Azl_Access): window.AZL.user.modules, window.AZL.access and command refusals.
-import { LABELS, MATRIX, kindOfStaffRole, levelOf } from "../src/modules/access.ts";
+import { LABELS, MATRIX, kindOfStaffRole, levelOf, readRefusal } from "../src/modules/access.ts";
 // The desk's undo rule (the same as Azl_Commands::undo_target).
 import { undoTarget } from "../src/domain/rules.ts";
 
@@ -94,7 +94,7 @@ let catalog = structuredClone(SEED_CATALOG);
 /* ---------- per-module extensions: every scripts/mock/<id>.mjs adds sample data, commands and a snapshot slice.
    export default { id, commandModule: { commandType: moduleId }, commands: { commandType: (c, x) => void | { ok:false, error } }, snapshot: (x) => slice }
    where x = { db, staff, catalog, ev, by, t, role }. ---------- */
-const EXT = [], EXT_COMMANDS = {}, EXT_MODULE = {};
+const EXT = [], EXT_COMMANDS = {}, EXT_MODULE = {}, EXT_ROUTES = [];
 {
   const { readdirSync } = await import("node:fs");
   const dir = fileURLToPath(new URL("./mock/", import.meta.url));
@@ -103,8 +103,12 @@ const EXT = [], EXT_COMMANDS = {}, EXT_MODULE = {};
     EXT.push(m);
     Object.assign(EXT_COMMANDS, m.commands ?? {});
     Object.assign(EXT_MODULE, m.commandModule ?? {});
+    // routes: { "GET /reports/<id>": (url, x) => json | { status, headers, raw } }; <name> matches one path segment.
+    for (const [k, h] of Object.entries(m.routes ?? {})) { const [method, path] = k.split(" "); EXT_ROUTES.push([method, new RegExp(`^${path.replace(/<\w+>/g, "[^/]+")}$`), h]); }
   }
 }
+// catalog(cat): an extension may add lists and their definitions (scripts/mock/config.mjs: module lists, catalog.defs).
+for (const m of EXT) if (m.catalog) catalog = m.catalog(catalog);
 const extSnapshot = (role) => Object.fromEntries(EXT.filter((m) => m.snapshot).map((m) => [m.id, m.snapshot({ db, staff, catalog, ev, role })]));
 
 /* ---------- the hotel's lists: GET /catalog, PUT /catalog/<list> (stale and in-use refusals like the plugin) ---------- */
@@ -116,6 +120,7 @@ function usage() {
   for (const w of db.wos) bump("departments", w.dept, "workOrders");
   for (const d of new Set(Object.values(db.items).filter((i) => i.holdReason).map((i) => `${i.holdReason}|${i.requestId}`))) bump("holdReasons", d.split("|")[0], "requests");
   out.openWorkOrders = db.wos.filter((w) => w.status !== "done").length;
+  out.lists = Object.assign({}, ...EXT.map((m) => m.usage?.({ db, catalog }) ?? {})); // usage(x): module lists in use
   return out;
 }
 function makeKey(label, taken) {
@@ -126,7 +131,7 @@ function makeKey(label, taken) {
   return key;
 }
 function putList(list, b) {
-  if (!LISTS.includes(list)) return [404, { ok: false, code: "azl_invalid", error: "Unknown list." }];
+  if (!LISTS.includes(list) && !catalog.defs?.some((d) => d.key === list)) return [404, { ok: false, code: "azl_invalid", error: "Unknown list." }];
   if (!Array.isArray(b.items) || !Number.isInteger(b.baseRev)) return [400, { ok: false, code: "azl_invalid", error: "Send the whole list and the version you loaded." }];
   if (b.baseRev !== catalog.catalogRev) return [409, { ok: false, code: "azl_stale", error: "Someone else changed this list. Your screen was refreshed; try again.", catalog, usage: usage() }];
   const known = new Set(catalog[list].map((x) => x.key));
@@ -156,7 +161,7 @@ function refusal(c, who) {
   if (who.kind === "none") return "Sign in with your PIN first.";
   const level = levelOf(mod, who, MATRIX, repairs);
   if (level === "none") return `Your role cannot use ${LABELS[mod]}.`;
-  if (level === "read") return `Your role can only view ${LABELS[mod]}.`;
+  if (level === "read" && readRefusal(mod, c.type, LABELS[mod])) return readRefusal(mod, c.type, LABELS[mod]);
   if (level === "own" && (c.type === "resolveIncident" || c.type === "editRequest")) return `Only a supervisor or manager can do this in ${LABELS[mod]}.`;
   if (level === "own" && who.kind === "staff" && c.itemId && db.items[c.itemId] && db.items[c.itemId].dept !== who.dept) return "You can only work on items of your own department.";
   return null;
@@ -328,6 +333,12 @@ createServer(async (req, res) => {
   if (r === "/snapshot") return send(res, 200, { ...db, staff, property: { id: "mock", name: "Mock" }, properties: [], at: Date.now(), actor, catalog, modules: extSnapshot(roleOf(req)) });
   if (r === "/catalog" && m === "GET") return send(res, 200, { ok: true, catalog, usage: usage() });
   if (r === "/poll") { const since = Number(url.searchParams.get("since")); return send(res, 200, { ok: true, rev, changed: since !== rev }); }
+  const route = EXT_ROUTES.find(([mm, re]) => mm === m && re.test(r));
+  if (route) {
+    const out = await route[2](url, { db, staff, catalog, ev, role, actor, level: (mod) => levelOf(mod, whoOf(role, actor), MATRIX, repairs), body: () => body(req) });
+    if (out && "raw" in out) { res.writeHead(out.status ?? 200, { "Cache-Control": "no-store", ...out.headers }); return res.end(out.raw); }
+    return send(res, out?.status ?? 200, out?.status ? out.data : out);
+  }
   const b = m === "GET" ? {} : await body(req);
   if (r === "/command") {
     if (role === "device" && !actor) return send(res, 403, { ok: false, code: "azl_needs_pin", error: "Sign in with your PIN first." });

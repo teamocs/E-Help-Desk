@@ -1,4 +1,4 @@
-import { STALE_LIST, isCatalog, type CatalogSave, type CatalogView, type Draft, type ListName, type Usage } from "../domain/catalog";
+import { STALE_LIST, isCatalog, type CatalogSave, type CatalogView, type Draft, type HotelProfile, type Usage } from "../domain/catalog";
 import type { AnyCommand as Command, CommandResult, Outcome, Snapshot, StaffInput } from "../domain/contract";
 import type { AzlConfig } from "./config";
 
@@ -64,7 +64,10 @@ export interface WpApi {
   /** GET /catalog: the hotel's lists with usage counts. */
   getCatalog(): Promise<Outcome<CatalogView>>;
   /** PUT /catalog/<list>: replaces one whole list, refused when the catalog moved past baseRev. */
-  putCatalog(list: ListName, items: Draft[], baseRev: number): Promise<CatalogSave>;
+  putCatalog(list: string, items: Draft[], baseRev: number): Promise<CatalogSave>;
+  /** GET /profile and PUT /profile (owner): the hotel profile on the Configuration page. */
+  getProfile(): Promise<Outcome<{ profile: HotelProfile }>>;
+  putProfile(p: Omit<HotelProfile, "timeZone">): Promise<Outcome<{ profile: HotelProfile }>>;
   /** The nonce now in use (WordPress may send a fresh one in the X-WP-Nonce response header). */
   readonly nonce: string;
 }
@@ -140,7 +143,14 @@ const codeOf = (data: unknown) => (isObj(data) && typeof data.code === "string" 
 function usageOf(u: unknown): Usage {
   const map = (v: unknown) => (isObj(v) && !Array.isArray(v) ? (v as Usage["departments"]) : {});
   const open = isObj(u) && Number.isInteger(u.openWorkOrders) ? { openWorkOrders: u.openWorkOrders as number } : {};
-  return { departments: map(isObj(u) ? u.departments : null), holdReasons: map(isObj(u) ? u.holdReasons : null), ...open };
+  const lists = isObj(u) && isObj(u.lists) && !Array.isArray(u.lists) ? { lists: u.lists as Usage["lists"] } : {};
+  return { departments: map(isObj(u) ? u.departments : null), holdReasons: map(isObj(u) ? u.holdReasons : null), ...open, ...lists };
+}
+/** The hotel profile from GET or PUT /profile; missing fields read as empty. */
+function profileOf(p: unknown): HotelProfile {
+  const o = isObj(p) ? p : {};
+  const s = (k: string) => (typeof o[k] === "string" ? (o[k] as string) : "");
+  return { name: s("name"), short: s("short"), contact: s("contact"), address: s("address"), timeZone: s("timeZone") || "Asia/Manila" };
 }
 const retryable = (status: number) => status >= 500 || status === 408 || status === 429;
 const sessionEnded = (r: Reply) => r.status === 401 || (r.status === 403 && codeOf(r.data) === "rest_cookie_invalid_nonce");
@@ -306,6 +316,9 @@ export function createWpApi(cfg: Pick<AzlConfig, "restUrl" | "nonce">, deps: Api
       if (!r.ok) return r;
       return isCatalog(r.catalog) ? { ok: true, catalog: r.catalog, usage: usageOf(r.usage) } : { ok: false, error: REFUSED };
     },
+
+    getProfile: () => outcome("GET", "/profile", undefined, (d) => ({ profile: profileOf(d.profile) })),
+    putProfile: (p) => outcome("PUT", "/profile", p, (d) => ({ profile: profileOf(d.profile) })),
 
     async putCatalog(list, items, baseRev) {
       let r: Reply;

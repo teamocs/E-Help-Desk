@@ -8,12 +8,16 @@ import { Avatar, Button, Group } from '../ui/kit';
 
 const ROLES = ['hdo', 'staff', 'supervisor'] as const;
 
-/** Real desk only: the owner or manager adds staff, sets their PINs and removes them. */
-export function StaffAdmin() {
-  const staff = useApp((s) => s.staff).filter((p) => p.id !== 'member');
+/**
+ * Real desk only: the owner or manager adds staff, sets their PINs and removes them. `only="hdo"`: the help-desk
+ * officers alone (Configuration, Help-Desk Staff), adding people with that job role.
+ */
+export function StaffAdmin({ only }: { only?: 'hdo' } = {}) {
+  const staff = useApp((s) => s.staff).filter((p) => p.id !== 'member' && (!only || p.role === only));
+  const px = only ? `st-${only}` : 'st';
   const [name, setName] = useState('');
-  const [title, setTitle] = useState('');
-  const [role, setRole] = useState<(typeof ROLES)[number]>('staff');
+  const [title, setTitle] = useState(only === 'hdo' ? 'Head Desk Officer' : '');
+  const [role, setRole] = useState<(typeof ROLES)[number]>(only ?? 'staff');
   const [dept, setDept] = useState('');
   const catalog = useApp((s) => s.catalog);
   const [savingTitle, setSavingTitle] = useState(false);
@@ -59,15 +63,15 @@ export function StaffAdmin() {
     const ok = await run(() => api!.add({ name, title, role, dept: dept || null }, pin), `${name.trim()} added.`);
     if (ok) {
       setName('');
-      setTitle('');
+      setTitle(only === 'hdo' ? 'Head Desk Officer' : '');
       setPin('');
     }
   }
 
   return (
     <>
-      <Group title="Staff" note="Staff sign in on a shared phone with a four-digit PIN. PINs are never shown again; set a new one if it is forgotten.">
-        {staff.length === 0 && <div className="row c2">No staff yet. Add the first person below.</div>}
+      <Group note={only ? 'Help-desk officers sign in with a PIN like everyone else. They are the people under Staff (PINs) whose role is Desk officer; a change here shows there too.' : 'Staff sign in on a shared phone with a four-digit PIN. PINs are never shown again; set a new one if it is forgotten.'}>
+        {staff.length === 0 && <div className="row c2">{only ? 'No help-desk officers yet. Add the first one below.' : 'No staff yet. Add the first person below.'}</div>}
         {staff.map((p) => (
           <div key={p.id} className="row" style={{ flexWrap: 'wrap' }}>
             <Avatar staff={p} />
@@ -100,34 +104,36 @@ export function StaffAdmin() {
       </Group>
 
       <form onSubmit={add}>
-        <h2 className="group-title">Add a person</h2>
+        <h3 className="group-title">{only ? 'Add a help-desk officer' : 'Add a person'}</h3>
         <div className="group" style={{ padding: 16, display: 'grid', gap: 14 }}>
-          <div><label className="field-label" htmlFor="st-name">Full name</label><input id="st-name" className="field" autoComplete="off" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} required /></div>
+          <div><label className="field-label" htmlFor={`${px}-name`}>Full name</label><input id={`${px}-name`} className="field" autoComplete="off" maxLength={80} value={name} onChange={(e) => setName(e.target.value)} required /></div>
           <div>
-            <label className="field-label" htmlFor="st-title">Job title</label>
-            <input id="st-title" className="field" list="st-titles" placeholder="Pick or type a title" autoComplete="off" maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)} aria-describedby="st-title-help" required />
-            <datalist id="st-titles">{activeOf(catalog.jobTitles).map((t) => <option key={t.key} value={t.label} />)}</datalist>
+            <label className="field-label" htmlFor={`${px}-title`}>Job title</label>
+            <input id={`${px}-title`} className="field" list={`${px}-titles`} placeholder="Pick or type a title" autoComplete="off" maxLength={60} value={title} onChange={(e) => setTitle(e.target.value)} aria-describedby={`${px}-title-help`} required />
+            <datalist id={`${px}-titles`}>{activeOf(catalog.jobTitles).map((t) => <option key={t.key} value={t.label} />)}</datalist>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-              <p className="field-help" id="st-title-help" style={{ margin: 0, flex: 1, minWidth: '12rem' }}>Suggestions come from Settings, Lists, Job titles. Any title works.</p>
+              <p className="field-help" id={`${px}-title-help`} style={{ margin: 0, flex: 1, minWidth: '12rem' }}>Suggestions come from Job Titles on this page. Any title works.</p>
               {canAddTitle && <button type="button" className="btn btn-plain btn-sm" disabled={savingTitle} onClick={() => void addTitle()}>{savingTitle ? 'Adding…' : `Add “${typed.length > 18 ? `${typed.slice(0, 18)}…` : typed}” to the list`}</button>}
             </div>
           </div>
+          {!only && (
+            <div>
+              <label className="field-label" htmlFor="st-role">Role</label>
+              <select id="st-role" className="field" value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}>
+                {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+              </select>
+            </div>
+          )}
           <div>
-            <label className="field-label" htmlFor="st-role">Role</label>
-            <select id="st-role" className="field" value={role} onChange={(e) => setRole(e.target.value as (typeof ROLES)[number])}>
-              {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="field-label" htmlFor="st-dept">Department</label>
-            <select id="st-dept" className="field" value={dept} onChange={(e) => setDept(e.target.value)}>
+            <label className="field-label" htmlFor={`${px}-dept`}>Department</label>
+            <select id={`${px}-dept`} className="field" value={dept} onChange={(e) => setDept(e.target.value)}>
               <option value="">No department</option>
               {activeDepartments(catalog).map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
             </select>
           </div>
-          <div><label className="field-label" htmlFor="st-pin">Four-digit PIN</label><input id="st-pin" className="field" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required /></div>
+          <div><label className="field-label" htmlFor={`${px}-pin`}>Four-digit PIN</label><input id={`${px}-pin`} className="field" type="password" inputMode="numeric" autoComplete="off" spellCheck={false} maxLength={4} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} required /></div>
           {error && <p className="field-help" role="alert" style={{ color: 'var(--bad)', margin: 0 }}>{error}</p>}
-          <button type="submit" className="btn btn-fill btn-block" disabled={busy || !name.trim() || !title.trim() || pin.length !== 4}>Add person</button>
+          <button type="submit" className="btn btn-fill btn-block" disabled={busy || !name.trim() || !title.trim() || pin.length !== 4}>{only ? 'Add help-desk officer' : 'Add person'}</button>
         </div>
       </form>
     </>

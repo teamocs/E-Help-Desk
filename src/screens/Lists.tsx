@@ -1,32 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  LIMITS, LISTS, LIST_META, MAX, REQUEST_ICONS, activeDepartments, deptLabel, usageText, validateList,
-  type BundlePart, type Catalog, type Draft, type ListName, type Problem, type RequestType, type Usage, type Bundle, type Department, type CatalogView,
+  LIMITS, REQUEST_ICONS, activeDepartments, defOf, deptLabel, isBuiltin, recordsText, usageText, validateList,
+  type BundlePart, type Catalog, type Draft, type FieldDef, type ListDef, type Problem, type RequestType, type Usage, type Bundle, type Department, type CatalogView,
 } from '../domain/catalog';
-import { archiveQuestion, blankRow, deleteProblem, isDirty, listSummary, move, removePart, suggestShort, toPayload, toRows, type Row } from '../domain/listEdit';
+import { archiveQuestion, blankRow, deleteProblem, isDirty, move, removePart, suggestShort, toPayload, toRows, type Row } from '../domain/listEdit';
 import { staffApi } from '../domain/staffApi';
 import type { Outcome } from '../domain/contract';
-import { app, toast, useApp } from '../domain/store';
-import { Button, Group, Icon, Pill, Row as ListRow } from '../ui/kit';
+import { app, toast } from '../domain/store';
+import { Button, Icon, Pill } from '../ui/kit';
 import { Sheet } from '../ui/sheet';
 
-const ICON: Record<ListName, string> = { departments: 'home', requestTypes: 'bell', bundles: 'bolt', holdReasons: 'hourglass', jobTitles: 'user', woFindings: 'wrench' };
+/** An icon per list (lists the desk does not know use a generic one). */
+export const LIST_ICON: Record<string, string> = {
+  departments: 'home', requestTypes: 'bell', bundles: 'bolt', holdReasons: 'hourglass', jobTitles: 'user', woFindings: 'wrench',
+  woAreas: 'clip', cleaningTypes: 'broom', vehicles: 'van', crisisCodes: 'siren', complaintCategories: 'chat', crisisLocations: 'info', involvedTypes: 'user',
+};
+export const listIcon = (list: string) => LIST_ICON[list] ?? 'list';
 
-/** Settings > Lists, for the owner and managers: one row per list, each opening its editor. */
-export function Lists() {
-  const cat = useApp((s) => s.catalog);
-  const [open, setOpen] = useState<ListName | null>(null);
-  return (
-    <>
-      <Group title="Lists" note="Your hotel's own choices. Changes reach every phone within a few seconds. Old requests keep the names they were logged with.">
-        {LISTS.map((l) => (
-          <ListRow key={l} icon={ICON[l]} tint="var(--accent-strong)" title={<span><span style={{ fontWeight: 600 }}>{LIST_META[l].title}</span> <span className="t-foot c2">· {listSummary(cat, l)}</span></span>} sub={LIST_META[l].help} chevron onClick={() => setOpen(l)} />
-        ))}
-      </Group>
-      {open && <ListEditor key={open} list={open} onClose={() => setOpen(null)} />}
-    </>
-  );
-}
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const focusSoon = (sel: string) => requestAnimationFrame(() => {
   const el = document.querySelector<HTMLElement>(sel);
@@ -34,8 +25,12 @@ const focusSoon = (sel: string) => requestAnimationFrame(() => {
   el?.scrollIntoView?.({ block: 'nearest' });
 });
 
-/** One list in a bottom sheet. Edits stay on this phone until Save, which replaces the whole list in one step. */
-function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) {
+/**
+ * One list in a bottom sheet, any list the server declares (catalog.defs): the built-in lists keep their richer
+ * fields; a module's list gets name, its declared fields, active, order, archive, restore and delete when unused.
+ * Edits stay on this phone until Save, which replaces the whole list in one step.
+ */
+export function ListEditor({ list, title, onClose }: { list: string; title?: string; onClose: () => void }) {
   // Mounted per list (key={list}): it starts from the lists this phone has, then loads the server's with usage.
   const [base, setBase] = useState<Catalog>(() => app.get().catalog);
   const [rows, setRows] = useState<Row[]>(() => toRows(app.get().catalog, list));
@@ -46,7 +41,7 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
   const [picking, setPicking] = useState<string | null>(null);
   const touched = useRef(false);
 
-  function reset(cat: Catalog, l: ListName) {
+  function reset(cat: Catalog, l: string) {
     setBase(cat);
     setRows(toRows(cat, l));
     touched.current = false;
@@ -68,7 +63,8 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const meta = LIST_META[list];
+  const def: ListDef = defOf(base, list) ?? { key: list, label: list, noun: ['entry', 'entries'], help: '', maxItems: 20, fields: [] };
+  const meta = { title: title ?? def.label, one: def.noun[0], help: def.help };
   const dirty = isDirty(rows, base, list);
 
   const update = (next: Row[]) => {
@@ -100,7 +96,7 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
   };
   const toggleArchive = (r: Row) => {
     if (r.active) {
-      const q = archiveQuestion(list, r, usage);
+      const q = archiveQuestion(list, r, usage, base);
       if (q && !window.confirm(q)) return;
     }
     patch(r.uid, { active: !r.active });
@@ -147,7 +143,7 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
     showProblem({ index: r.index, error: r.error });
   }
 
-  const full = rows.length >= MAX[list];
+  const full = rows.length >= def.maxItems;
   return (
     <Sheet open title={meta.title} onClose={close}>
       <p className="t-sub c2" style={{ margin: '0 0 4px' }}>{meta.help}</p>
@@ -167,7 +163,7 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
 
       {rows.length === 0 ? (
         <div className="empty" style={{ marginTop: 14 }}>
-          <span className="empty-ico" aria-hidden="true"><Icon name={ICON[list]} size={26} /></span>
+          <span className="empty-ico" aria-hidden="true"><Icon name={listIcon(list)} size={26} /></span>
           <p>No {meta.title.toLowerCase()} yet. Add the first one, then save.</p>
         </div>
       ) : (
@@ -176,6 +172,7 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
             <Entry
               key={r.uid}
               list={list}
+              def={def}
               row={r}
               index={i}
               count={rows.length}
@@ -195,7 +192,7 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
 
       <div className="le-foot">
         <span className="sr" role="status" aria-live="polite">{saving ? 'Saving' : ''}</span>
-        <button type="button" data-le-add className="btn btn-gray btn-sm" disabled={full || saving} onClick={add} title={full ? `Up to ${MAX[list]}` : undefined}>
+        <button type="button" data-le-add className="btn btn-gray btn-sm" disabled={full || saving} onClick={add} title={full ? `Up to ${def.maxItems}` : undefined}>
           <Icon name="plus" size={20} /> Add {meta.one}
         </button>
         <button type="button" className="btn btn-fill" disabled={!dirty || saving} onClick={() => void save()}>{saving ? 'Saving…' : dirty ? 'Save changes' : 'Saved'}</button>
@@ -205,7 +202,8 @@ function ListEditor({ list, onClose }: { list: ListName; onClose: () => void }) 
 }
 
 interface EntryProps {
-  list: ListName;
+  list: string;
+  def: ListDef;
   row: Row;
   index: number;
   count: number;
@@ -245,26 +243,54 @@ function Minutes({ id, value, onChange, label = 'Target (minutes)' }: { id: stri
   );
 }
 
-function Entry({ list, row, index, count, base, usage, error, picking, onPick, onPatch, onMove, onArchive, onDelete }: EntryProps) {
+/** A module list's declared field: a short text box, a yes/no box or a whole number. */
+function FieldInput({ id, f, value, onChange }: { id: string; f: FieldDef; value: unknown; onChange: (v: unknown) => void }) {
+  const fid = `${id}-f-${f.name}`;
+  if (f.type === 'bool') {
+    return (
+      <label className="le-check">
+        <input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />
+        <span>{cap(f.label)}</span>
+      </label>
+    );
+  }
+  const short = f.type === 'int' || (f.max ?? LIMITS.label) <= 10;
+  return (
+    <div style={short ? { flex: '0 1 7.5rem', minWidth: '6rem' } : { flex: '1 1 12rem', minWidth: 0 }}>
+      <label className="field-label" htmlFor={fid}>{cap(f.label)}{f.required ? '' : ' (optional)'}</label>
+      {f.type === 'int' ? (
+        <input id={fid} className="field" type="number" inputMode="numeric" step={1} min={f.min} max={f.max} value={Number.isFinite(value as number) ? (value as number) : ''} onChange={(e) => onChange(e.target.value === '' ? NaN : Number(e.target.value))} />
+      ) : (
+        <input id={fid} className="field" autoComplete="off" maxLength={f.max ?? LIMITS.label} value={typeof value === 'string' ? value : ''} onChange={(e) => onChange(e.target.value)} />
+      )}
+    </div>
+  );
+}
+
+function Entry({ list, def, row, index, count, base, usage, error, picking, onPick, onPatch, onMove, onArchive, onDelete }: EntryProps) {
   const id = `le-${row.uid}`;
-  const name = row.label.trim() || `new ${LIST_META[list].one}`;
+  const name = row.label.trim() || `new ${def.noun[0]}`;
   const errId = `${id}-err`;
   const described = error ? { 'aria-invalid': true, 'aria-describedby': errId } : {};
-  const used = row.key && list === 'departments' ? usageText(usage?.departments[row.key]) : row.key && list === 'holdReasons' ? usageText(usage?.holdReasons[row.key]) : '';
-  const simple = list === 'holdReasons' || list === 'jobTitles' || list === 'woFindings';
+  const builtin = isBuiltin(list);
+  const used = !row.key ? '' : list === 'departments' ? usageText(usage?.departments[row.key]) : list === 'holdReasons' ? usageText(usage?.holdReasons[row.key]) : recordsText(base, list, row.key, usage);
+  const tracksUse = list === 'departments' || list === 'holdReasons' || (!builtin && !!def.usedBy);
+  const extra = builtin ? [] : def.fields;
+  const simple = list === 'holdReasons' || list === 'jobTitles' || list === 'woFindings' || (!builtin && extra.length === 0);
+  const fields = row as unknown as Record<string, unknown>;
 
   return (
     <li className={`le-item ${simple ? 'simple' : ''} ${row.active ? '' : 'off'}`}>
       <div className="le-head">
         <div style={{ flex: '1 1 12rem', minWidth: 0 }}>
-          <label className={simple ? 'sr' : 'field-label'} htmlFor={`${id}-label`}>{simple ? `${LIST_META[list].one}: name` : 'Name'}</label>
+          <label className={simple ? 'sr' : 'field-label'} htmlFor={`${id}-label`}>{simple ? `${cap(def.noun[0])}: name` : 'Name'}</label>
           <input
             id={`${id}-label`}
             className="field"
             maxLength={LIMITS.label}
             autoComplete="off"
             value={row.label}
-            placeholder={simple ? `New ${LIST_META[list].one}` : undefined}
+            placeholder={simple ? `New ${def.noun[0]}` : undefined}
             onChange={(e) => onPatch({ label: e.target.value })}
             onBlur={() => { if (list === 'departments' && !(row as Draft<Department>).short.trim()) onPatch({ short: suggestShort(row.label) }); }}
             {...described}
@@ -277,7 +303,9 @@ function Entry({ list, row, index, count, base, usage, error, picking, onPick, o
             <span className="sr" id={`${id}-short-help`}>Short code on badges, up to {LIMITS.short} letters</span>
           </div>
         )}
+        {extra.filter((f) => f.type !== 'bool').map((f) => <FieldInput key={f.name} id={id} f={f} value={fields[f.name]} onChange={(v) => onPatch({ [f.name]: v } as Partial<Row>)} />)}
       </div>
+      {extra.filter((f) => f.type === 'bool').map((f) => <FieldInput key={f.name} id={id} f={f} value={fields[f.name]} onChange={(v) => onPatch({ [f.name]: v } as Partial<Row>)} />)}
       {list === 'departments' && (
         <label className="le-check">
           <input type="checkbox" checked={(row as Draft<Department>).repairs === true} onChange={(e) => onPatch({ repairs: e.target.checked } as Partial<Row>)} aria-describedby={`${id}-repairs-help`} />
@@ -356,7 +384,7 @@ function Entry({ list, row, index, count, base, usage, error, picking, onPick, o
         );
       })()}
 
-      {row.key && (list === 'departments' || list === 'holdReasons') && (
+      {row.key && tracksUse && (
         <p className="t-foot c2" style={{ margin: '8px 0 0' }}>{used ? `In use: ${used}${list === 'holdReasons' ? ' on hold now' : ''}` : 'Not used by any record yet'}</p>
       )}
       {list === 'requestTypes' && !row.active && <p className="t-foot c2" style={{ margin: '8px 0 0' }}>Hidden from new requests. Goes to {deptLabel((row as Draft<RequestType>).dept, base)}.</p>}

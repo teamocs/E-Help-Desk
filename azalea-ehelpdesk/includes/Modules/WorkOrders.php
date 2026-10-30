@@ -121,6 +121,7 @@ final class Azl_Module_WorkOrders extends Azl_Module {
 		return array(
 			'reportWo' => array(
 				'ids'      => $ids,
+				'need'     => 'report', // B.3: staff of a department that does not handle repairs may still report one
 				'validate' => array( $this, 'check_report' ),
 				'run'      => array( $this, 'report' ),
 				'prior'    => static function ( string $id ): array {

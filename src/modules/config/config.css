@@ -1,0 +1,59 @@
+/* Configuration (src/modules/config). The hotel's --azl-* colours come through styles.css. */
+.screen > .inner:has(.cfg) { max-width: 1120px; }
+
+.cfg-who { margin-bottom: 20px; }
+.cfg-who .grow { min-width: 10rem; }
+
+/* Desktop: sections list beside the page */
+.cfg { display: grid; grid-template-columns: 13.5rem minmax(0, 1fr); gap: 28px; align-items: start; }
+.cfg-nav { position: sticky; top: 12px; max-height: calc(100dvh - 24px); overflow-y: auto; padding: 4px 0; }
+.cfg-nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.cfg-nav a { display: flex; align-items: center; gap: 10px; min-height: 2.5rem; padding: 0 12px; border-radius: 10px; color: var(--fg-2); font: 500 0.9375rem/1.2 var(--font); text-decoration: none; }
+.cfg-nav a:hover { background: var(--fill); color: var(--fg); }
+.cfg-nav a[aria-current] { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+.cfg-nav a:focus-visible { outline-offset: -3px; }
+
+.cfg-body { display: grid; gap: 16px; min-width: 0; }
+.cfg-sec { background: var(--surface); border: 1px solid var(--sep); border-radius: var(--r-card); padding: 18px 20px 20px; scroll-margin-top: 12px; }
+.cfg-sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: var(--hit-sm); margin-bottom: 4px; }
+.cfg-sec-head h2 { margin: 0; font: 600 1.0625rem/1.3 var(--font); }
+.cfg-sec-head h2:focus { outline: none; }
+.cfg-sec-head h2:focus-visible { outline: 3px solid var(--accent-strong); outline-offset: 4px; border-radius: 4px; }
+.cfg-sec .group { border-radius: 12px; }
+.cfg-sec .group-title { padding-top: 1.25rem; }
+
+.cfg-help { margin: 0 0 12px; color: var(--fg-2); font: 400 0.9375rem/1.45 var(--font); max-width: 68ch; }
+.cfg-note { margin: 12px 0 0; }
+.cfg-none { margin: 0; }
+
+/* Read views: the prototype's chips */
+.cfg-groups { display: grid; gap: 14px; }
+.cfg-group h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; color: var(--accent-strong); font: 600 0.875rem/1.3 var(--font); }
+.cfg-group.off h3 { color: var(--fg-2); }
+.cfg-tag { padding: 1px 8px; border-radius: var(--r-pill); background: var(--fill); color: var(--fg-2); font: 500 0.75rem/1.5 var(--font); }
+.cfg-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.cfg-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 2rem; padding: 0 12px; border-radius: 8px; background: var(--fill); font: 500 0.875rem/1.2 var(--font); overflow-wrap: anywhere; }
+.cfg-chip.off { background: transparent; border: 1px dashed var(--sep); color: var(--fg-2); }
+.cfg-off { font: 500 0.75rem var(--font); color: var(--fg-2); }
+
+/* Hotel profile */
+.cfg-dl { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 4px 0 0; font: 400 0.9375rem/1.45 var(--font); }
+.cfg-dl > div { display: contents; }
+.cfg-dl dt { color: var(--fg-2); }
+.cfg-dl dd { margin: 0; overflow-wrap: anywhere; }
+.cfg-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; margin-top: 4px; }
+.cfg-form .wide { grid-column: 1 / -1; }
+.cfg-form .field-help { margin-bottom: 0; }
+.cfg-fixed { display: grid; gap: 2px; margin: 0; min-height: var(--hit-sm); align-content: center; padding: 0 2px; }
+.cfg-actions { display: flex; justify-content: flex-end; }
+
+/* Phone: one list, each section in a sheet */
+.cfg-phone { list-style: none; margin: 0; padding: 0; }
+.cfg-phone li + li .row::before { content: ""; position: absolute; top: 0; left: 60px; right: 0; height: 1px; background: var(--sep); }
+
+@media (max-width: 1099px) { .cfg { grid-template-columns: 11.5rem minmax(0, 1fr); gap: 20px; } }
+@media (max-width: 560px) {
+  .cfg-form { grid-template-columns: 1fr; }
+  .cfg-dl { grid-template-columns: 1fr; gap: 2px; }
+  .cfg-dl dd { margin-bottom: 8px; }
+}

@@ -72,7 +72,7 @@ final class Azl_Snapshot {
 			'at'         => $now,
 			'rev'        => $rev,
 			// The hotel's lists. A save bumps the change counter, so every phone gets them on its next poll.
-			'catalog'    => Azl_Catalog::get(),
+			'catalog'    => Azl_Catalog::for_desk( Azl_Catalog::get() ), // with defs: how the Configuration page edits each list
 			// Each module's own data, keyed by module id: only the modules this reader may read (Azl_Access).
 			'modules'    => (object) Azl_Modules::snapshot( $who ),
 		);

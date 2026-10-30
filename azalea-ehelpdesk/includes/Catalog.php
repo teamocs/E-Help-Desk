@@ -10,7 +10,9 @@
  *     bundles:      [{key, label, hint, parts: [{name, dept, slaMin, after?}], active}],
  *     holdReasons | jobTitles | woFindings: [{key, label, active}] }
  * Modules add lists of their own (Azl_Module::catalogLists(): key, label, maxItems, fields, seed): entries
- * {key, label, active, ...declared fields}, checked by module_entry(), seeded when the module first appears.
+ * {key, label, active, ...declared fields}, checked by module_entry(), seeded when the module first appears (a list
+ * already stored, even an empty one, is never seeded again). defs() describes every list for the Configuration page;
+ * USES (or a module's 'uses') names the records that store a module list's keys, so those cannot be deleted in use.
  * Order is array order. Keys are [a-z0-9_]{2,20} (the varchar(20) columns), made from the label on
  * create and never changed. Records store keys (items, staff and work orders a department key, held
  * items a hold-reason key) or copies (an item copies a request type's name, department and SLA).
@@ -70,6 +72,132 @@ final class Azl_Catalog {
 	);
 
 	const STALE = 'Someone else changed this list. Your screen was refreshed; try again.';
+
+	/** Headings and one line of help for the Configuration page (a module list may give its own title and help). */
+	const META = array(
+		'departments'         => array( 'Departments', 'The teams that receive requests, like Housekeeping or Spa. Each has a short code for the badges.' ),
+		'requestTypes'        => array( 'Service items', 'The buttons on a new request. Each goes to one department with a target time.' ),
+		'bundles'             => array( 'Bundles', 'One tap that sends several steps to different teams, like a leak: fix, then clean.' ),
+		'holdReasons'         => array( 'Hold reasons', 'Why a job is waiting. The clock pauses while it is on hold.' ),
+		'jobTitles'           => array( 'Job titles', 'Suggestions when you add a person. You can still type any title.' ),
+		'woFindings'          => array( 'Work-order findings', 'Quick answers when someone assesses a repair. They can still type their own.' ),
+		'woAreas'             => array( 'Areas', 'Where a work order is: a room, a public area, the staff house.' ),
+		'cleaningTypes'       => array( 'Cleaning types', 'The kinds of clean a room attendant logs, like Regular or Checkout.' ),
+		'vehicles'            => array( 'Vehicles', 'The hotel cars and vans that trips are logged for.' ),
+		'crisisCodes'         => array( 'Crisis codes', 'The radio codes a crisis case is logged under. Mark the guest-complaint code so it asks for a category.' ),
+		'complaintCategories' => array( 'Complaint categories', 'What a guest complaint is about, for the complaint code.' ),
+		'crisisLocations'     => array( 'Crisis locations', 'Where a crisis happened. A follow-up question asks for the room number or the place.' ),
+		'involvedTypes'       => array( 'Involved types', 'Who was involved in a crisis case: a guest, a supplier, staff.' ),
+	);
+
+	/**
+	 * Module lists whose keys records store (a module's own 'uses' wins): such an entry cannot be deleted while records
+	 * use it. Work-order areas are copied into the work order as text, so they are not here.
+	 */
+	const USES = array(
+		'vehicles'            => array( 'table' => 'trips', 'column' => 'vehicle_key', 'noun' => array( 'trip', 'trips' ) ),
+		'cleaningTypes'       => array( 'table' => 'clean_tasks', 'column' => 'type', 'noun' => array( 'cleaning task', 'cleaning tasks' ) ),
+		'crisisCodes'         => array( 'table' => 'crisis_cases', 'column' => 'code', 'noun' => array( 'crisis case', 'crisis cases' ) ),
+		'complaintCategories' => array( 'table' => 'crisis_cases', 'column' => 'comp_cat', 'noun' => array( 'crisis case', 'crisis cases' ) ),
+		'crisisLocations'     => array( 'table' => 'crisis_cases', 'column' => 'location', 'noun' => array( 'crisis case', 'crisis cases' ) ),
+		'involvedTypes'       => array( 'table' => 'crisis_cases', 'column' => 'who_type', 'noun' => array( 'crisis case', 'crisis cases' ) ),
+	);
+
+	/** The built-in lists' fields, described like a module's (types text, bool, int, plus dept, icon and parts). */
+	private static function builtin_fields( string $list ): array {
+		switch ( $list ) {
+			case 'departments':
+				return array(
+					array( 'name' => 'short', 'label' => 'badge', 'type' => 'text', 'max' => self::SHORT_MAX, 'required' => true ),
+					array( 'name' => 'repairs', 'label' => 'handles repairs', 'type' => 'bool', 'default' => false ),
+				);
+			case 'requestTypes':
+				return array(
+					array( 'name' => 'dept', 'label' => 'department', 'type' => 'dept', 'required' => true ),
+					array( 'name' => 'slaMin', 'label' => 'target (minutes)', 'type' => 'int', 'min' => 1, 'max' => self::SLA_MAX ),
+					array( 'name' => 'icon', 'label' => 'icon', 'type' => 'icon' ),
+				);
+			case 'bundles':
+				return array(
+					array( 'name' => 'hint', 'label' => 'what it does', 'type' => 'text', 'max' => self::HINT_MAX ),
+					array( 'name' => 'parts', 'label' => 'steps', 'type' => 'parts', 'max' => self::MAX_PARTS ),
+				);
+		}
+		return array();
+	}
+
+	/** Where a module list's keys are stored ({table, column, noun}), or null. */
+	private static function uses_of( string $list ): ?array {
+		$def = self::module_lists()[ $list ] ?? null;
+		$u   = null === $def ? null : ( $def['uses'] ?? self::USES[ $list ] ?? null );
+		return is_array( $u ) && is_string( $u['table'] ?? null ) && is_string( $u['column'] ?? null ) && preg_match( '/^[a-z0-9_]+\z/', $u['table'] . $u['column'] ) ? $u : null;
+	}
+
+	/**
+	 * Every list's definition, built-in first, for the desk (GET /catalog and the snapshot send it as catalog.defs):
+	 * [{key, label, noun: [one, many], help, maxItems, fields: [{name, label, type, max?, min?, required?, default?}],
+	 *   module?: id, usedBy?: [one, many]}]. The Configuration page draws an editor for each, so a module's list needs
+	 * no desk code.
+	 */
+	public static function defs(): array {
+		$owner = array();
+		if ( class_exists( 'Azl_Modules' ) ) {
+			foreach ( Azl_Modules::all() as $id => $m ) {
+				foreach ( array_keys( $m->catalogLists() ) as $k ) {
+					$owner[ $k ] = $id;
+				}
+			}
+		}
+		$out = array();
+		foreach ( self::lists() as $list ) {
+			$def    = self::module_lists()[ $list ] ?? array();
+			$noun   = array( self::noun( $list, 0 ), self::noun( $list, 1 ) );
+			$fields = isset( $owner[ $list ] ) ? array() : self::builtin_fields( $list );
+			foreach ( (array) ( $def['fields'] ?? array() ) as $f ) {
+				$name = (string) ( $f['name'] ?? '' );
+				if ( '' === $name || in_array( $name, array( 'key', 'label', 'active' ), true ) ) {
+					continue;
+				}
+				$type     = in_array( $f['type'] ?? 'text', array( 'text', 'bool', 'int' ), true ) ? ( $f['type'] ?? 'text' ) : 'text';
+				$fields[] = array_filter(
+					array(
+						'name'     => $name,
+						'label'    => (string) ( $f['label'] ?? $name ),
+						'type'     => $type,
+						'max'      => isset( $f['max'] ) ? (int) $f['max'] : ( 'text' === $type ? self::LABEL_MAX : null ),
+						'min'      => isset( $f['min'] ) ? (int) $f['min'] : null,
+						'required' => empty( $f['required'] ) ? null : true,
+						'default'  => $f['default'] ?? null,
+					),
+					static function ( $v ) {
+						return null !== $v;
+					}
+				);
+			}
+			$row = array(
+				'key'      => $list,
+				'label'    => (string) ( $def['title'] ?? self::META[ $list ][0] ?? ucfirst( $noun[1] ) ),
+				'noun'     => $noun,
+				'help'     => (string) ( $def['help'] ?? self::META[ $list ][1] ?? '' ),
+				'maxItems' => self::max_of( $list ),
+				'fields'   => $fields,
+			);
+			if ( isset( $owner[ $list ] ) ) {
+				$row['module'] = $owner[ $list ];
+				$uses          = self::uses_of( $list );
+				if ( null !== $uses ) {
+					$row['usedBy'] = array_values( (array) ( $uses['noun'] ?? array( 'record', 'records' ) ) );
+				}
+			}
+			$out[] = $row;
+		}
+		return $out;
+	}
+
+	/** The catalog as the desk gets it: the lists plus their definitions (defs). */
+	public static function for_desk( array $cat ): array {
+		return $cat + array( 'defs' => self::defs() );
+	}
 
 	/* ---------- the lists: the built-in ones, then each module's (Azl_Module::catalogLists()) ---------- */
 
@@ -276,10 +404,25 @@ final class Azl_Catalog {
 				$out[ $list ][ $r['k'] ][ $what ] = (int) $r['n'];
 			}
 		}
+		// Module lists whose keys records store (USES): lists: {list: {key: number of records}}.
+		$lists = array();
+		foreach ( array_keys( self::module_lists() ) as $list ) {
+			$u = self::uses_of( $list );
+			if ( null === $u ) {
+				continue;
+			}
+			$col = $u['column'];
+			$map = array();
+			foreach ( Azl_Db::rows( "SELECT $col AS k, COUNT(*) AS n FROM " . Azl_Db::t( $u['table'] ) . " WHERE $col IS NOT NULL GROUP BY $col" ) as $r ) {
+				$map[ $r['k'] ] = (int) $r['n'];
+			}
+			$lists[ $list ] = (object) $map;
+		}
 		return array(
 			'departments'    => (object) $out['departments'],
 			'holdReasons'    => (object) $out['holdReasons'],
 			'openWorkOrders' => self::open_work_orders(),
+			'lists'          => (object) $lists,
 		);
 	}
 
@@ -559,8 +702,21 @@ final class Azl_Catalog {
 
 	/** The first referential problem with the new list, or null. */
 	private static function in_use( string $list, array $next, array $cur, array $usage ): ?array {
+		$uses = self::uses_of( $list );
+		if ( null !== $uses ) { // a module list whose keys records store
+			$used = (array) ( ( (array) $usage['lists'] )[ $list ] ?? array() );
+			$kept = array_column( $next, null, 'key' );
+			$noun = array_values( (array) ( $uses['noun'] ?? array( 'record', 'records' ) ) );
+			foreach ( $cur[ $list ] as $old ) {
+				$n = (int) ( $used[ $old['key'] ] ?? 0 );
+				if ( $n > 0 && ! isset( $kept[ $old['key'] ] ) ) {
+					return self::err( $old['label'] . " is used by $n " . ( 1 === $n ? $noun[0] : ( $noun[1] ?? $noun[0] ) ) . '. Archive it instead.' ) + array( 'key' => $old['key'] );
+				}
+			}
+			return null;
+		}
 		if ( 'departments' !== $list && 'holdReasons' !== $list ) {
-			return null; // request types, bundles, titles and findings are copied into records, never referenced
+			return null; // request types, bundles, titles, findings and areas are copied into records, never referenced
 		}
 		$kept = array_column( $next, null, 'key' );
 		foreach ( $cur[ $list ] as $old ) {

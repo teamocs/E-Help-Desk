@@ -266,8 +266,8 @@ test(
 		access_accounts();
 		$wo = wot_new();
 		$GLOBALS['azl_wp']['user'] = ACC_PHONE;
-		eq( array( 'ok' => false, 'error' => 'Your role can only view Work Orders.' ), cmd( wot_report(), JOEL ), 'housekeeping staff cannot report (B.3 says "report only"; see the report)' );
-		eq( array( 'ok' => false, 'error' => 'Your role can only view Work Orders.' ), cmd( wot_cmd( 'assessWo', $wo ), JOEL ) );
+		has( array( 'ok' => true, 'applied' => true ), cmd( wot_report(), JOEL ), 'housekeeping staff may report one (B.3 "report only")' );
+		eq( array( 'ok' => false, 'error' => sprintf( Azl_Access::REPORT_ONLY, 'Work Orders' ) ), cmd( wot_cmd( 'assessWo', $wo ), JOEL ), 'but not act on it' );
 		has( array( 'ok' => true ), cmd( wot_cmd( 'assessWo', $wo ), RAMON ), 'engineering handles repairs' );
 		has( array( 'ok' => true ), cmd( wot_report(), MARIA ), 'the help desk officer' );
 		eq( array( 'ok' => false, 'error' => 'Sign in with your PIN first.' ), cmd( wot_report(), null ) );

@@ -711,11 +711,12 @@ final class Azl_Commands {
 		if ( 'done' !== $status || ! preg_match( '/checkout|inspection/i', $it['name'] ) ) {
 			return;
 		}
+		// The prototype's rule: the room becomes ready with the checkout time (Cleaning shows it; an earlier one is kept).
 		$ct = Azl_Db::t( 'clean_tasks' );
 		Azl_Db::exec(
-			"UPDATE $ct SET status = 'ready', updated_at = %d WHERE status IN ('scheduled', 'queued') AND room = (SELECT room FROM "
+			"UPDATE $ct SET status = 'ready', checkout_at = COALESCE(checkout_at, %d), updated_at = %d WHERE status IN ('scheduled', 'queued') AND room = (SELECT room FROM "
 				. Azl_Db::t( 'requests' ) . ' WHERE id = %s)',
-			array( $this->now, $it['request_id'] )
+			array( $this->now, $this->now, $it['request_id'] )
 		);
 	}
 

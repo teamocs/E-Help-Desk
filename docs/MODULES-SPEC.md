@@ -642,3 +642,25 @@ See `src/modules/README.md`: one folder `src/modules/<id>/` (replace the placeho
 ## What wave 2 modules may now do independently
 
 Inquiries, House Status, Crisis cases, Transport and Reminders can each, in parallel: create their tables and counters, register commands (with validation, scope and replay numbers), send their snapshot slice, add editable lists, write progress notes to `azl_updates`, and build their screen and badge in their own folder. Requests, Cleaning and Work Orders parity (B.4 steps 3 to 5) change existing tables and commands, so they still touch shared files (`Commands.php`, `Schema.php`, `store.ts`) and should be sequenced, not parallel.
+
+---
+
+# Part D: implementation status (2026-10-31, plugin 0.5.0)
+
+All 11 sidebar modules are built and follow the prototype's navigation, labels, order and badge rules. Deviations are intentional: hotel palettes and fonts, our own response-time model (per item type, from acknowledgement, hold removed), the safety lane kept in front of the Crisis case log ("CALL 911 / RADIO FIRST, THEN LOG"; a case needs only a code to be saved), Handover shown as a Dashboard panel, roles enforced on the server (docs section B.3 as implemented in `includes/Access.php`), everything in the hotel's local time (Asia/Manila, never UTC), Configuration editable.
+
+| Module | State | Where |
+|---|---|---|
+| Dashboard | built | `src/modules/dashboard` |
+| Requests | parity (table, edit, hand off, undo, staff request, history) | `src/screens/Requests.tsx`, `src/modules/requests`, `includes/Modules/Requests.php` |
+| Inquiries | built | `src/modules/inquiries`, `includes/Modules/Inquiries.php` |
+| Cleaning | parity (log, schedule, clock in/out) | `src/screens/Housekeeping.tsx`, `src/modules/cleaning` |
+| Work Orders | parity (report form, updates, extend, outsource, scheduled) | `src/screens/Maintenance.tsx`, `src/modules/workorders` |
+| House Status | built | `src/modules/housestatus` |
+| Crisis Mgmt | case log behind the unchanged safety lane | `src/modules/crisis`, `includes/Modules/Crisis.php` |
+| Transport | built (trips, vehicles list) | `src/modules/transport` |
+| Reminders | built | `src/modules/reminders` |
+| Reports | six reports, date range, CSV export | `src/modules/reports`, `includes/Modules/Reports.php` |
+| Configuration | hotel profile and every list editable | `src/modules/config` |
+
+Open questions for the client remain in Part C (handover placement, role table, service-level model, crisis closing rule, zero badges, report priorities, scheduled work orders, transport drivers, look and feel). Defaults used meanwhile are listed above.

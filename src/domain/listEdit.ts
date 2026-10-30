@@ -1,5 +1,5 @@
 // The list editors' logic, kept apart from the screens so it can be tested without a browser.
-import { activeDepartments, deleteBlocker, usageText, type Catalog, type Draft, type Entry, type ListName, type Usage } from './catalog';
+import { activeDepartments, defOf, deleteBlocker, entriesOf, recordsText, usageText, type Catalog, type Draft, type Entry, type Usage } from './catalog';
 
 /** One entry while it is being edited: `uid` tells React rows apart (the key, or a temporary id for new entries). */
 export type Row = Draft & { uid: string };
@@ -8,7 +8,7 @@ let seq = 0;
 const tempId = () => `new-${++seq}`;
 
 /** The list as the editor starts it. */
-export const toRows = (cat: Catalog, list: ListName): Row[] => (cat[list] as Entry[]).map((x) => ({ ...x, uid: x.key }));
+export const toRows = (cat: Catalog, list: string): Row[] => entriesOf(cat, list).map((x) => ({ ...x, uid: x.key }) as Row);
 
 /** What the server gets: the rows without the editor's ids, in their order. */
 export const toPayload = (rows: Row[]): Draft[] =>
@@ -19,16 +19,23 @@ export const toPayload = (rows: Row[]): Draft[] =>
   });
 
 /** True when the rows differ from the saved list. */
-export const isDirty = (rows: Row[], cat: Catalog, list: ListName) => JSON.stringify(toPayload(rows)) !== JSON.stringify(cat[list]);
+export const isDirty = (rows: Row[], cat: Catalog, list: string) => JSON.stringify(toPayload(rows)) !== JSON.stringify(entriesOf(cat, list));
 
-/** A blank entry for the list, pointing at the first active department where one is needed. */
-export function blankRow(list: ListName, cat: Catalog): Row {
+/**
+ * A blank entry for the list, pointing at the first active department where one is needed. A module list's fields
+ * start at their declared default (text '', yes/no false, a number its minimum).
+ */
+export function blankRow(list: string, cat: Catalog): Row {
   const dept = activeDepartments(cat)[0]?.key ?? '';
   const base = { uid: tempId(), label: '', active: true };
   if (list === 'departments') return { ...base, short: '', repairs: false };
   if (list === 'requestTypes') return { ...base, dept, slaMin: 15, icon: 'bell' };
   if (list === 'bundles') return { ...base, hint: '', parts: [{ name: '', dept, slaMin: 20 }] };
-  return base;
+  const fields: Record<string, unknown> = {};
+  for (const f of defOf(cat, list)?.fields ?? []) {
+    fields[f.name] = f.default ?? (f.type === 'bool' ? false : f.type === 'int' ? (f.min ?? 0) : '');
+  }
+  return { ...fields, ...base } as Row;
 }
 
 /** Moves the row at i one place up (-1) or down (+1). Out of range: unchanged. */
@@ -62,10 +69,10 @@ export function suggestShort(label: string): string {
  * What to ask before archiving a saved department or hold reason that records use, or '' to archive without asking.
  * Records keep working: they keep the key and still show the name.
  */
-export function archiveQuestion(list: ListName, row: Row, usage: Usage | null): string {
+export function archiveQuestion(list: string, row: Row, usage: Usage | null, cat?: Catalog): string {
   if (!row.key) return '';
   const u = list === 'departments' ? usage?.departments[row.key] : list === 'holdReasons' ? usage?.holdReasons[row.key] : undefined;
-  const used = usageText(u);
+  const used = usageText(u) || (cat ? recordsText(cat, list, row.key, usage) : '');
   if (!used) return '';
   return `${used} use ${row.label}; they keep working and still show its name. Archive it so nobody picks it for new work?`;
 }
@@ -74,11 +81,11 @@ export function archiveQuestion(list: ListName, row: Row, usage: Usage | null): 
  * Deleting a row: '' when it can go (a new row always can), otherwise why not. Saved departments and hold reasons
  * that records use can only be archived.
  */
-export const deleteProblem = (list: ListName, row: Row, cat: Catalog, usage: Usage | null) => (row.key ? deleteBlocker(list, row.key, cat, usage) : '');
+export const deleteProblem = (list: string, row: Row, cat: Catalog, usage: Usage | null) => (row.key ? deleteBlocker(list, row.key, cat, usage) : '');
 
 /** "6 active · 1 archived" for the Lists overview. */
-export function listSummary(cat: Catalog, list: ListName): string {
-  const all = cat[list] as Entry[];
+export function listSummary(cat: Catalog, list: string): string {
+  const all: Entry[] = entriesOf(cat, list);
   const off = all.filter((x) => !x.active).length;
   if (!all.length) return 'None yet';
   return off ? `${all.length - off} active · ${off} archived` : `${all.length} active`;

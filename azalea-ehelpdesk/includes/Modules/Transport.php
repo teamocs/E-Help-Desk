@@ -81,14 +81,22 @@ final class Azl_Module_Transport extends Azl_Module {
 			$n = Azl_Db::val( 'SELECT tr_no FROM ' . Azl_Db::t( 'trips' ) . ' WHERE id = %s', array( $id ) );
 			return null === $n ? array() : array( 'trNo' => (int) $n );
 		};
+		// Department staff (own access) may only depart and arrive their own trips; the rest is the desk's (ownRefusal).
+		$desk = static function ( array $cmd, array $who ): bool {
+			return 'staff' !== ( $who['kind'] ?? '' );
+		};
 		return array(
-			'logTrip'      => array( 'ids' => array( 'tripId' ), 'validate' => array( $this, 'check_new' ), 'run' => array( $this, 'log' ), 'prior' => $prior ),
-			'scheduleTrip' => array( 'ids' => array( 'tripId' ), 'validate' => array( $this, 'check_scheduled' ), 'run' => array( $this, 'schedule' ), 'prior' => $prior ),
-			'editTrip'     => array( 'ids' => array( 'tripId' ), 'validate' => array( $this, 'check_edit' ), 'run' => array( $this, 'edit' ) ),
+			'logTrip'      => array( 'ids' => array( 'tripId' ), 'validate' => array( $this, 'check_new' ), 'run' => array( $this, 'log' ), 'prior' => $prior, 'scope' => $desk ),
+			'scheduleTrip' => array( 'ids' => array( 'tripId' ), 'validate' => array( $this, 'check_scheduled' ), 'run' => array( $this, 'schedule' ), 'prior' => $prior, 'scope' => $desk ),
+			'editTrip'     => array( 'ids' => array( 'tripId' ), 'validate' => array( $this, 'check_edit' ), 'run' => array( $this, 'edit' ), 'scope' => $desk ),
 			'departTrip'   => array( 'ids' => array( 'tripId' ), 'run' => array( $this, 'depart' ) ),
 			'arriveTrip'   => array( 'ids' => array( 'tripId' ), 'run' => array( $this, 'arrive' ) ),
-			'cancelTrip'   => array( 'ids' => array( 'tripId' ), 'run' => array( $this, 'cancel' ) ),
+			'cancelTrip'   => array( 'ids' => array( 'tripId' ), 'run' => array( $this, 'cancel' ), 'scope' => $desk ),
 		);
+	}
+
+	public function ownRefusal( string $type ): ?string {
+		return self::DESK_ONLY;
 	}
 
 	/* ---------- validation: plain-language problems, before anything is written ---------- */
@@ -162,13 +170,10 @@ final class Azl_Module_Transport extends Azl_Module {
 
 	/* ---------- who may do what ---------- */
 
-	/** The reason this actor may not run a trip command, or null. Desk-only commands pass $trip = null. */
-	private static function refused( Azl_Commands $ctx, ?array $trip ): ?string {
+	/** The reason this actor may not depart or arrive this trip, or null. (Desk-only commands: Azl_Access, ownRefusal.) */
+	private static function refused( Azl_Commands $ctx, array $trip ): ?string {
 		if ( 'staff' !== ( $ctx->who()['kind'] ?? '' ) ) {
 			return null; // help desk, supervisor, manager, owner: full access
-		}
-		if ( null === $trip ) {
-			return self::DESK_ONLY;
 		}
 		$me = null === $ctx->actor() ? '' : (string) Azl_Db::val( 'SELECT name FROM ' . Azl_Db::t( 'staff' ) . ' WHERE id = %s', array( $ctx->actor() ) );
 		return '' !== $me && 0 === strcasecmp( trim( $trip['driver'] ), $me ) ? null : self::NOT_YOURS;
@@ -181,10 +186,6 @@ final class Azl_Module_Transport extends Azl_Module {
 	/* ---------- commands ---------- */
 
 	private function create( array $cmd, Azl_Commands $ctx, string $status, ?int $sched, string $what ): array {
-		$refused = self::refused( $ctx, null );
-		if ( null !== $refused ) {
-			return Azl_Commands::fail( $refused );
-		}
 		if ( null !== self::locked( $cmd['tripId'] ) ) {
 			return Azl_Commands::fail( 'This trip already exists.' );
 		}
@@ -274,10 +275,6 @@ final class Azl_Module_Transport extends Azl_Module {
 	}
 
 	public function cancel( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::refused( $ctx, null );
-		if ( null !== $refused ) {
-			return Azl_Commands::fail( $refused );
-		}
 		$trip = self::locked( $cmd['tripId'] );
 		if ( null === $trip ) {
 			return Azl_Commands::fail( 'Unknown trip' );
@@ -293,10 +290,6 @@ final class Azl_Module_Transport extends Azl_Module {
 	}
 
 	public function edit( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::refused( $ctx, null );
-		if ( null !== $refused ) {
-			return Azl_Commands::fail( $refused );
-		}
 		$trip = self::locked( $cmd['tripId'] );
 		if ( null === $trip ) {
 			return Azl_Commands::fail( 'Unknown trip' );
