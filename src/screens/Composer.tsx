@@ -233,7 +233,7 @@ function Body() {
         {err.items && <p className="rq-err" role="alert">{err.items}</p>}
       </fieldset>
 
-      <Field label="Remarks (optional)" help="Safety words in English, Tagalog and Bikol are checked on this device, with or without internet.">{(a) => (
+      <Field label="Remarks (optional)" help="Safety words in English and Tagalog are checked on this device, with or without internet.">{(a) => (
         <textarea className="field" {...a} rows={2} value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Add detail only if it helps." />
       )}</Field>
       <div className="row" style={{ padding: 0, minHeight: 0 }}>

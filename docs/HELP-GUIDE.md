@@ -356,7 +356,7 @@ The **Leak bundle** starts two jobs. Engineering fixes the source first (20 minu
 
 ![The optional Remark box](help/img/desktop/013-new-request-remark-pins.png)
 
-1. Remark box: add a short note only if it helps. It is optional. The desk checks your words for danger. It reads English, Tagalog and Bikol, even with no internet.
+1. Remark box: add a short note only if it helps. It is optional. The desk checks your words for danger. It reads English and Tagalog, even with no internet.
 
 ![The Log request and Log it later buttons](help/img/desktop/014-new-request-ready-pins.png)
 
@@ -500,7 +500,7 @@ The starting hold reasons are: **Waiting for parts**, **No access to room**, **G
 
 A **safety alert** warns everybody about danger. It does not call anyone.
 
-**What starts it.** You type a danger word in the **Remark** of a new request. The desk reads English, Tagalog and Bikol. It does this on your device, even with no internet. It listens for these dangers:
+**What starts it.** You type a danger word in the **Remark** of a new request. The desk reads English and Tagalog. It does this on your device, even with no internet. It listens for these dangers:
 
 | Danger | Example words | What the screen says to do |
 |---|---|---|
