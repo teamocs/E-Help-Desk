@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Azalea e-Helpdesk
  * Description:       Live service-request, maintenance and safety desk for one hotel property, served at /helpdesk/.
- * Version:           0.3.0
+ * Version:           0.4.0
  * Requires at least: 6.4
  * Requires PHP:      8.1
  * Author:            Online Creative Solutions
@@ -19,27 +19,31 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'AZL_EHD_VERSION', '0.3.0' );
+define( 'AZL_EHD_VERSION', '0.4.0' );
 define( 'AZL_EHD_FILE', __FILE__ );
 define( 'AZL_EHD_DIR', plugin_dir_path( __FILE__ ) );
 /** Bump when the rewrite rules change, so they are flushed once after an update (never on every request). */
 define( 'AZL_EHD_REWRITE_VERSION', '2' );
 
 /**
- * Load every includes/*.php. A missing or broken file is reported in wp-admin instead of taking the site down.
+ * Load every includes/*.php, then every module in includes/Modules/*.php (see includes/Modules.php). A missing or
+ * broken file, or a module that does not register cleanly, is reported in wp-admin instead of taking the site down.
  */
 function azl_ehd_load_includes() {
 	static $loaded = false;
 	if ( $loaded ) {
 		return;
 	}
-	$loaded = true;
-	$files  = glob( AZL_EHD_DIR . 'includes/*.php' );
+	$loaded  = true;
+	$files   = glob( AZL_EHD_DIR . 'includes/*.php' );
+	$modules = glob( AZL_EHD_DIR . 'includes/Modules/*.php' );
 	if ( ! is_array( $files ) ) {
 		return;
 	}
 	sort( $files );
-	foreach ( $files as $file ) {
+	$modules = is_array( $modules ) ? $modules : array();
+	sort( $modules );
+	foreach ( array_merge( $files, $modules ) as $file ) {
 		if ( ! is_readable( $file ) ) {
 			continue;
 		}
@@ -58,6 +62,10 @@ if ( class_exists( 'Azl_Caps' ) ) {
 }
 if ( class_exists( 'Azl_Auth' ) ) {
 	Azl_Auth::hooks();
+}
+// Tables: an update (or a new module) creates its new tables once, before anything reads them. Additive only.
+if ( class_exists( 'Azl_Schema' ) ) {
+	add_action( 'plugins_loaded', array( 'Azl_Schema', 'maybe_upgrade' ) );
 }
 
 add_action(
@@ -349,7 +357,12 @@ function azl_ehd_render_desk() {
 			'canManage'         => current_user_can( 'azl_manage_staff' ),
 			'canManageAccounts' => current_user_can( 'azl_manage_accounts' ),
 			'canManageLists'    => current_user_can( 'azl_manage_lists' ),
+			// The modules this account may see (id => read|own|full), from the role matrix. Empty on a shared phone:
+			// there it depends on the person who signs in with a PIN, worked out from `access` below.
+			'modules'           => (object) Azl_Access::levels( Azl_Access::who( (int) $user->ID, null ) ),
 		),
+		// The role matrix (module => kind => level), so the desk hides what the server would refuse.
+		'access'     => Azl_Access::matrix(),
 		'theme'      => Azl_Theme::public_tokens( $theme ),
 		'version'    => AZL_EHD_VERSION,
 	);

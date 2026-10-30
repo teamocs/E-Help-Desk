@@ -1,4 +1,4 @@
-import type { Command, CommandResult, Snapshot } from "./contract";
+import type { AnyCommand, Command, CommandResult, ModuleCommand, Snapshot } from "./contract";
 import { defaultOutbox, type Outbox } from "./outbox";
 
 // Keeps the optimistic client store in step with the server. WpApp enables it once the desk connects.
@@ -14,9 +14,11 @@ import { defaultOutbox, type Outbox } from "./outbox";
 
 type Distribute<C> = C extends { opId: string } ? Omit<C, "opId"> : never;
 export type Draft = Distribute<Command>;
+/** A module's own command before it gets its opId (see runModuleCommand in store.ts). */
+export type ModuleDraft = Omit<ModuleCommand, "opId"> & { type: string };
 
 export interface Transport {
-  run(cmd: Command): Promise<CommandResult>;
+  run(cmd: AnyCommand): Promise<CommandResult>;
   load(): Promise<Snapshot>;
 }
 
@@ -43,11 +45,11 @@ export interface Options {
    * Adds data to a command when it is queued, before it is saved. The WordPress desk records the PIN token of the
    * person acting now, so a command that waits offline is still credited to them when it finally goes out.
    */
-  stamp?: (cmd: Command) => Command;
+  stamp?: (cmd: AnyCommand) => AnyCommand;
 }
 
 interface Queued {
-  cmd: Command;
+  cmd: AnyCommand;
   /** The outbox key, or null when the outbox could not save it (the command still goes out). */
   saved: Promise<number | null>;
 }
@@ -59,7 +61,7 @@ let hooks: Hooks | null = null;
 let outbox: Outbox = defaultOutbox();
 let scope = "";
 let retryMs = 1000;
-let stamp: (cmd: Command) => Command = (c) => c;
+let stamp: (cmd: AnyCommand) => AnyCommand = (c) => c;
 let pending: Queued[] = [];
 let ready: Promise<void> = Promise.resolve();
 let gen = 0; // bumped on enable and disable; a loop from an older generation stops
@@ -172,8 +174,12 @@ export const remote = {
     fails = 0;
   },
   send(draft: Draft): void {
+    remote.sendModule(draft);
+  },
+  /** Queues a module's own command (any registered type) exactly like a built-in one. */
+  sendModule(draft: ModuleDraft | Draft): void {
     if (!transport) return;
-    const cmd = stamp({ ...draft, opId: crypto.randomUUID() } as Command);
+    const cmd = stamp({ ...draft, opId: crypto.randomUUID() } as AnyCommand);
     const o = outbox;
     const s = scope;
     const saved = ready.then(() => o.add(s, cmd)).catch(() => null);

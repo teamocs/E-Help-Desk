@@ -46,7 +46,7 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
   let retry: ReturnType<typeof setTimeout> | undefined;
   const scope = `wp:${cfg.property.id}`;
 
-  setUI({ account: { name: cfg.user.name, role, hotel: cfg.theme.name || cfg.property.name, logoUrl: cfg.theme.logoUrl } });
+  setUI({ account: { name: cfg.user.name, role, hotel: cfg.theme.name || cfg.property.name, logoUrl: cfg.theme.logoUrl, modules: cfg.user.modules }, access: cfg.access });
   remote.enable(
     { run: (cmd) => api.command(cmd), load: async () => (await api.snapshot()).snapshot },
     { snapshot: (s) => applySnapshot(s, me), error: (message) => toast(message, "error"), status: (sync) => setUI({ sync }) },
@@ -96,7 +96,7 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
       // After a reload the signed acting-staff token says who was acting; the server only returns it while valid.
       const acting = actor && snapshot.staff.some((p) => p.id === actor) ? actor : null;
       app.set((s) => ({ ...s, me: acting ?? me?.id ?? null }));
-      setUI({ remote: true, deviceOnly, screen: acting || me ? "app" : "lock", tab: "requests", sheet: null, selItem: undefined, selWo: undefined });
+      setUI({ remote: true, deviceOnly, screen: acting || me ? "app" : "lock", tab: "dashboard", sheet: null, selItem: undefined, selWo: undefined });
       stopPoll = startPolling(tick, cfg.pollMs);
     } catch (e) {
       if (!alive || e instanceof AuthError) return;

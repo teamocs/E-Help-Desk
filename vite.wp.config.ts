@@ -24,6 +24,8 @@ export default defineConfig({
       input: fileURLToPath(new URL("./src/wp/main.tsx", import.meta.url)),
       output: {
         format: "es",
+        // Module screens are React.lazy imports (src/modules); keep them in the one file the plugin loads.
+        inlineDynamicImports: true,
         entryFileNames: "desk-[hash].js",
         assetFileNames: "desk-[hash][extname]",
       },

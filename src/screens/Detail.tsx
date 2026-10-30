@@ -78,7 +78,7 @@ function ItemCard({ it }: { it: Item }) {
       )}
       {it.status === 'escalated' && (
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-          <Button size="sm" variant="tint" onClick={() => setUI({ tab: 'maintenance', selWo: it.woId, selItem: undefined, sheet: null })}>Open work order</Button>
+          <Button size="sm" variant="tint" onClick={() => setUI({ tab: 'workorders', selWo: it.woId, selItem: undefined, sheet: null })}>Open work order</Button>
           <Button size="sm" variant="gray" icon="undo" onClick={() => undoEscalate(it.id)}>Undo escalation</Button>
         </div>
       )}

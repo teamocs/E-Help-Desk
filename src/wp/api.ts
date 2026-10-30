@@ -1,5 +1,5 @@
 import { STALE_LIST, isCatalog, type CatalogSave, type CatalogView, type Draft, type ListName, type Usage } from "../domain/catalog";
-import type { Command, CommandResult, Outcome, Snapshot, StaffInput } from "../domain/contract";
+import type { AnyCommand as Command, CommandResult, Outcome, Snapshot, StaffInput } from "../domain/contract";
 import type { AzlConfig } from "./config";
 
 // The WordPress REST calls the desk makes (namespace azl-ehd/v1), over fetch with cookie auth and X-WP-Nonce.

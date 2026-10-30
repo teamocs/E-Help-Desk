@@ -1,11 +1,14 @@
 {
   "src/wp/main.tsx": {
-    "file": "desk-UxfOt37L.js",
+    "file": "desk-DpVVR8VN.js",
     "name": "main",
     "src": "src/wp/main.tsx",
     "isEntry": true,
+    "dynamicImports": [
+      "src/wp/main.tsx"
+    ],
     "css": [
-      "desk-CV1gVIv1.css"
+      "desk-CxqPHsQM.css"
     ]
   }
 }

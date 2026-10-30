@@ -9,6 +9,8 @@
  *     requestTypes: [{key, label, dept, slaMin, icon, active}],
  *     bundles:      [{key, label, hint, parts: [{name, dept, slaMin, after?}], active}],
  *     holdReasons | jobTitles | woFindings: [{key, label, active}] }
+ * Modules add lists of their own (Azl_Module::catalogLists(): key, label, maxItems, fields, seed): entries
+ * {key, label, active, ...declared fields}, checked by module_entry(), seeded when the module first appears.
  * Order is array order. Keys are [a-z0-9_]{2,20} (the varchar(20) columns), made from the label on
  * create and never changed. Records store keys (items, staff and work orders a department key, held
  * items a hold-reason key) or copies (an item copies a request type's name, department and SLA).
@@ -69,6 +71,89 @@ final class Azl_Catalog {
 
 	const STALE = 'Someone else changed this list. Your screen was refreshed; try again.';
 
+	/* ---------- the lists: the built-in ones, then each module's (Azl_Module::catalogLists()) ---------- */
+
+	/** Every list key, built-in first. */
+	public static function lists(): array {
+		return array_merge( self::LISTS, array_keys( self::module_lists() ) );
+	}
+
+	/** Module list definitions: key => {label: [singular, plural], maxItems, fields, seed}. */
+	private static function module_lists(): array {
+		return class_exists( 'Azl_Modules' ) ? Azl_Modules::lists() : array();
+	}
+
+	private static function max_of( string $list ): int {
+		return self::MAX[ $list ] ?? max( 1, min( 200, (int) ( self::module_lists()[ $list ]['maxItems'] ?? 20 ) ) );
+	}
+
+	private static function noun( string $list, int $i ): string {
+		$n = self::NOUN[ $list ] ?? (array) ( self::module_lists()[ $list ]['label'] ?? array( 'entry', 'entries' ) );
+		return (string) ( $n[ $i ] ?? $n[0] );
+	}
+
+	/** A module list's seed entries, with keys made from their labels. */
+	private static function module_seed( array $def ): array {
+		$out   = array();
+		$taken = array();
+		foreach ( (array) ( $def['seed'] ?? array() ) as $row ) {
+			$clean = self::module_entry( $def, is_array( $row ) ? $row : array() );
+			$label = self::text( $row['label'] ?? null );
+			if ( is_string( $clean ) || '' === $label ) {
+				continue; // a bad seed row is skipped, never stored
+			}
+			$key           = self::make_key( $label, $taken );
+			$taken[ $key ] = true;
+			$out[]         = array( 'key' => $key, 'label' => $label ) + $clean + array( 'active' => true );
+		}
+		return $out;
+	}
+
+	/**
+	 * A module list entry's declared fields, checked and normalised: text (max, required), bool or int (min, max).
+	 *
+	 * @return array|string the fields, or the problem in plain language
+	 */
+	private static function module_entry( array $def, array $in ) {
+		$out = array();
+		foreach ( (array) ( $def['fields'] ?? array() ) as $f ) {
+			$name = (string) ( $f['name'] ?? '' );
+			if ( '' === $name || in_array( $name, array( 'key', 'label', 'active' ), true ) ) {
+				continue;
+			}
+			$what = (string) ( $f['label'] ?? $name );
+			$type = $f['type'] ?? 'text';
+			$v    = $in[ $name ] ?? ( $f['default'] ?? null );
+			if ( 'bool' === $type ) {
+				if ( ! is_bool( $v ?? false ) ) {
+					return "Choose yes or no for $what.";
+				}
+				$out[ $name ] = (bool) $v;
+			} elseif ( 'int' === $type ) {
+				if ( is_float( $v ) && floor( $v ) === $v ) {
+					$v = (int) $v;
+				}
+				$min = (int) ( $f['min'] ?? 0 );
+				$max = (int) ( $f['max'] ?? PHP_INT_MAX );
+				if ( ! is_int( $v ) || $v < $min || $v > $max ) {
+					return "Enter a whole number for $what from $min to $max.";
+				}
+				$out[ $name ] = $v;
+			} else {
+				$v   = self::text( $v ?? '' );
+				$max = (int) ( $f['max'] ?? self::LABEL_MAX );
+				if ( ! empty( $f['required'] ) && '' === $v ) {
+					return "Enter the $what.";
+				}
+				if ( mb_strlen( $v ) > $max ) {
+					return "Keep the $what under $max characters.";
+				}
+				$out[ $name ] = $v;
+			}
+		}
+		return $out;
+	}
+
 	/* ---------- reading ---------- */
 
 	/** The factory lists, from Azl_Rules. catalogRev 0. */
@@ -93,6 +178,9 @@ final class Azl_Catalog {
 		$cat['holdReasons'] = $choices( Azl_Rules::HOLD_REASONS );
 		$cat['jobTitles']   = $choices( Azl_Rules::JOB_TITLES );
 		$cat['woFindings']  = $choices( Azl_Rules::WO_FINDINGS );
+		foreach ( self::module_lists() as $key => $def ) {
+			$cat[ $key ] = self::module_seed( $def );
+		}
 		return $cat;
 	}
 
@@ -110,6 +198,12 @@ final class Azl_Catalog {
 		foreach ( $cat['departments'] as $i => $d ) {
 			if ( ! is_bool( $d['repairs'] ?? null ) ) { // stored before the flag existed: the factory value
 				$cat['departments'][ $i ]['repairs'] = (bool) ( Azl_Rules::DEPTS[ $d['key'] ?? '' ]['repairs'] ?? false );
+			}
+		}
+		// A module added since the lists were stored starts from its seed; it is stored with the next save.
+		foreach ( self::module_lists() as $key => $def ) {
+			if ( ! is_array( $cat[ $key ] ?? null ) || ! array_is_list( $cat[ $key ] ) ) {
+				$cat[ $key ] = self::module_seed( $def );
 			}
 		}
 		return $cat;
@@ -205,14 +299,14 @@ final class Azl_Catalog {
 	 *   409 {ok:false, code:azl_stale, error, catalog, usage}.
 	 */
 	public static function save( string $list, $items, $base_rev ): array {
-		if ( ! in_array( $list, self::LISTS, true ) ) {
+		if ( ! in_array( $list, self::lists(), true ) ) {
 			return array( 404, array( 'ok' => false, 'code' => 'azl_invalid', 'error' => 'Unknown list.' ) );
 		}
 		if ( ! is_array( $items ) || ! array_is_list( $items ) || ! is_int( $base_rev ) ) {
 			return array( 400, self::invalid( 'Send the whole list and the version you loaded.' ) );
 		}
-		if ( count( $items ) > self::MAX[ $list ] ) {
-			return array( 400, self::invalid( 'Keep the list to ' . self::MAX[ $list ] . ' ' . self::NOUN[ $list ][1] . '.' ) );
+		if ( count( $items ) > self::max_of( $list ) ) {
+			return array( 400, self::invalid( 'Keep the list to ' . self::max_of( $list ) . ' ' . self::noun( $list, 1 ) . '.' ) );
 		}
 		return Azl_Db::transaction(
 			static function () use ( $list, $items, $base_rev ) {
@@ -357,12 +451,22 @@ final class Azl_Catalog {
 					}
 					$row += array( 'hint' => $hint, 'parts' => $parts );
 					break;
+				default: // hold reasons, job titles, findings: key, label, active. A module's list: plus its declared fields.
+					$def = self::module_lists()[ $list ] ?? null;
+					if ( null === $def ) {
+						break;
+					}
+					$fields = self::module_entry( $def, $in );
+					if ( is_string( $fields ) ) {
+						return self::err( $fields, $i );
+					}
+					$row += $fields;
 			}
 			$row['active'] = $active;
 			$out[]         = $row;
 		}
 		if ( in_array( $list, array( 'departments', 'holdReasons' ), true ) && ! in_array( true, array_column( $out, 'active' ), true ) ) {
-			return self::err( 'Keep at least one active ' . self::NOUN[ $list ][0] . '.' );
+			return self::err( 'Keep at least one active ' . self::noun( $list, 0 ) . '.' );
 		}
 		$taken = $known; // a key that existed stays reserved even if it is being removed now
 		foreach ( $out as $row ) {

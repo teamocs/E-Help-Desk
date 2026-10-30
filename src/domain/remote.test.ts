@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { Command, CommandResult, Snapshot } from "./contract";
+import type { AnyCommand as Command, CommandResult, Snapshot } from "./contract";
 import { memoryOutbox } from "./outbox";
 import { remote, type Status } from "./remote";
 

@@ -51,7 +51,7 @@ export function Insights() {
   ];
 
   return (
-    <Screen title="Insights" subtitle="Live counts from this desk. No rankings of people.">
+    <Screen title="Reports" subtitle="Live counts from this desk. No rankings of people.">
       <h2 className="sr">Now</h2>
       <div className="group tiles">
         {tiles.map(([label, n, color]) => (

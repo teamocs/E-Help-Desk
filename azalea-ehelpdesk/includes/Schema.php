@@ -18,28 +18,44 @@ defined( 'ABSPATH' ) || exit;
 
 final class Azl_Schema {
 
-	const VERSION = '1';
-	const OPTION  = 'azl_db_version';
-	const COUNTERS = array( 'ticket', 'wo', 'inc', 'change' );
+	/** 2: azl_updates and the counters for the new ticket numbers (wave 1 of the modules). */
+	const VERSION  = '2';
+	const OPTION   = 'azl_db_version';
+	/** inq, hs, cr, tr: Inquiries I-0001, House Status HS-0001, Crisis cases CR-0001, Transport TR-0001. */
+	const COUNTERS = array( 'ticket', 'wo', 'inc', 'change', 'inq', 'hs', 'cr', 'tr' );
 
-	/** Creates or upgrades the tables. Safe to run again. */
+	/** The stored database version: VERSION, plus every module and its version (Azl_Modules::signature()). */
+	public static function db_version(): string {
+		$mods = class_exists( 'Azl_Modules' ) ? Azl_Modules::signature() : '';
+		return '' === $mods ? self::VERSION : self::VERSION . '+' . $mods;
+	}
+
+	/** Creates or upgrades the tables, the plugin's and every module's. Additive and safe to run again. */
 	public static function install(): void {
 		if ( ! function_exists( 'dbDelta' ) ) {
 			require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 		}
 		dbDelta( self::sql() );
-		$seq = Azl_Db::t( 'seq' );
-		foreach ( self::COUNTERS as $name ) {
+		$seq   = Azl_Db::t( 'seq' );
+		$names = array_unique( array_merge( self::COUNTERS, class_exists( 'Azl_Modules' ) ? Azl_Modules::sequences() : array() ) );
+		foreach ( $names as $name ) {
 			Azl_Db::exec( Azl_Db::insert_ignore() . " INTO $seq (name, val) VALUES (%s, 0)", array( $name ) );
 		}
-		update_option( self::OPTION, self::VERSION, false );
+		// Autoloaded: maybe_upgrade() reads it on every request (plugins_loaded), so it must cost no query.
+		update_option( self::OPTION, self::db_version(), true );
 	}
 
-	/** Call on plugins_loaded: upgrades when the stored version differs. */
+	/** Runs on plugins_loaded: upgrades once when the plugin or a module changed its tables. */
 	public static function maybe_upgrade(): void {
-		if ( get_option( self::OPTION ) !== self::VERSION ) {
+		if ( get_option( self::OPTION ) !== self::db_version() ) {
 			self::install();
 		}
+	}
+
+	/** ENGINE and charset for a CREATE TABLE, for module schemas. */
+	public static function table_options(): string {
+		global $wpdb;
+		return 'ENGINE=InnoDB ' . $wpdb->get_charset_collate();
 	}
 
 	/**
@@ -51,10 +67,17 @@ final class Azl_Schema {
 		foreach ( self::TABLES as $t ) {
 			$wpdb->query( 'DROP TABLE IF EXISTS ' . $wpdb->prefix . 'azl_' . $t ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		}
+		// Module tables (modules are not loaded during uninstall): every other azl_ table of this site.
+		$like = $wpdb->esc_like( $wpdb->prefix . 'azl_' ) . '%';
+		foreach ( (array) $wpdb->get_col( $wpdb->prepare( 'SHOW TABLES LIKE %s', $like ) ) as $t ) { // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			if ( preg_match( '/^[A-Za-z0-9_]+$/', (string) $t ) ) {
+				$wpdb->query( "DROP TABLE IF EXISTS `{$t}`" ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.DirectDatabaseQuery
+			}
+		}
 		delete_option( self::OPTION );
 	}
 
-	const TABLES = array( 'requests', 'items', 'work_orders', 'clean_tasks', 'incidents', 'handovers', 'events', 'staff', 'seq' );
+	const TABLES = array( 'requests', 'items', 'work_orders', 'clean_tasks', 'incidents', 'handovers', 'events', 'staff', 'seq', 'updates' );
 
 	/** @return string[] One CREATE TABLE statement per table. */
 	public static function sql(): array {
@@ -62,7 +85,7 @@ final class Azl_Schema {
 		$p = $wpdb->prefix . 'azl_';
 		$c = 'ENGINE=InnoDB ' . $wpdb->get_charset_collate();
 
-		return array(
+		$core = array(
 			"CREATE TABLE {$p}staff (
   id char(36) NOT NULL,
   wp_user_id bigint(20) unsigned DEFAULT NULL,
@@ -209,6 +232,21 @@ final class Azl_Schema {
   val bigint(20) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY  (name)
 ) $c;",
+			// Progress notes of any module (Azl_Updates). A replayed op adds nothing: unique op + entity + record.
+			"CREATE TABLE {$p}updates (
+  id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  entity varchar(20) NOT NULL,
+  entity_id char(36) NOT NULL,
+  text text NOT NULL,
+  by_staff char(36) DEFAULT NULL,
+  op_id char(36) NOT NULL,
+  created_at bigint(20) NOT NULL,
+  updated_at bigint(20) NOT NULL,
+  PRIMARY KEY  (id),
+  UNIQUE KEY op_entity (op_id,entity,entity_id),
+  KEY entity (entity,entity_id,created_at)
+) $c;",
 		);
+		return array_merge( $core, class_exists( 'Azl_Modules' ) ? Azl_Modules::schema() : array() );
 	}
 }

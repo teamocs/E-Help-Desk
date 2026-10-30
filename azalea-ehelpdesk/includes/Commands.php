@@ -3,6 +3,7 @@
  * Port of src/server/mutations.ts: applies one Command from src/server/contract.ts.
  *
  * Each command runs in one transaction:
+ *   0. check the actor may change the command's module (Azl_Access, the role matrix);
  *   1. read and validate, with row locks on the rows it will change (no writes yet);
  *   2. claim the op by inserting its first event row (INSERT IGNORE on op_id + entity_id + what);
  *      nothing inserted means the op already ran: answer applied:false and stop;
@@ -89,20 +90,24 @@ final class Azl_Commands {
 	private $op;
 	/** @var int one time for the whole command, like now() in one Postgres transaction */
 	private $now;
+	/** @var array|null the actor kind and department (Azl_Access::who), or null to read it from the signed-in user */
+	private $who;
 
-	private function __construct( ?string $actor, string $op ) {
+	private function __construct( ?string $actor, string $op, ?array $who ) {
 		$this->actor = $actor;
 		$this->op    = $op;
 		$this->now   = Azl_Db::now();
+		$this->who   = $who;
 	}
 
 	/**
 	 * Applies one command. $cmd is the decoded JSON body; $actor is the staff id acting (from the PIN
 	 * token or the manager's linked staff row) or null for a manager account with no staff row.
+	 * $who is the actor kind (Azl_Access::who); by default it comes from the signed-in WordPress user and $actor.
 	 *
 	 * @return array The CommandResult: {ok:true, applied, ticketNo?, woNo?, incidentNo?, clusteredInto?} or {ok:false, error}.
 	 */
-	public static function apply( array $cmd, ?string $actor ): array {
+	public static function apply( array $cmd, ?string $actor, ?array $who = null ): array {
 		$cmd = self::normalized( $cmd, $actor );
 		if ( null === $cmd ) {
 			return self::fail( 'Invalid id' );
@@ -112,8 +117,8 @@ final class Azl_Commands {
 		}
 		try {
 			return Azl_Db::transaction(
-				function () use ( $cmd, $actor ) {
-					$r      = ( new self( $actor, $cmd['opId'] ) )->run( $cmd );
+				function () use ( $cmd, $actor, $who ) {
+					$r      = ( new self( $actor, $cmd['opId'], $who ) )->run( $cmd );
 					$commit = true === $r['ok'] && true === $r['applied'];
 					if ( $commit ) {
 						Azl_Db::bump( 'change' );
@@ -135,8 +140,9 @@ final class Azl_Commands {
 		if ( ! Azl_Db::is_uuid( $cmd['opId'] ?? null ) ) {
 			return null;
 		}
-		$type = is_string( $cmd['type'] ?? null ) ? $cmd['type'] : '';
-		foreach ( self::REQUIRED_IDS[ $type ] ?? array() as $k ) {
+		$type     = is_string( $cmd['type'] ?? null ) ? $cmd['type'] : '';
+		$required = self::REQUIRED_IDS[ $type ] ?? ( class_exists( 'Azl_Modules' ) ? ( Azl_Modules::command( $type )['ids'] ?? array() ) : array() );
+		foreach ( $required as $k ) {
 			if ( ! array_key_exists( $k, $cmd ) ) {
 				return null;
 			}
@@ -176,7 +182,62 @@ final class Azl_Commands {
 				return self::fail( self::NOT_HERE );
 			}
 		}
+		// The role matrix (Azl_Access): every command belongs to a module; too little access is refused here.
+		$this->who = $this->who ?? Azl_Access::who( (int) get_current_user_id(), $this->actor );
+		$refused   = Azl_Access::refusal( $cmd, $this->who );
+		if ( null !== $refused ) {
+			return self::fail( $refused );
+		}
 		return $this->prior( $cmd ) ?? $this->dispatch( $cmd );
+	}
+
+	/** A command of a module (Azl_Modules): its validation, then its handler with this command as context. */
+	private function module_command( array $cmd ): array {
+		$def = Azl_Modules::command( (string) $cmd['type'] );
+		if ( null === $def ) {
+			return self::fail( 'Unknown command' );
+		}
+		$problem = isset( $def['validate'] ) ? ( $def['validate'] )( $cmd ) : null;
+		if ( is_string( $problem ) && '' !== $problem ) {
+			return self::fail( $problem );
+		}
+		$r = ( $def['run'] )( $cmd, $this );
+		return is_array( $r ) && is_bool( $r['ok'] ?? null ) ? $r : self::fail( self::ERROR );
+	}
+
+	/* ---------- the context a module command runs in ---------- */
+
+	/** The staff id acting, or null for a manager account acting as itself. */
+	public function actor(): ?string {
+		return $this->actor;
+	}
+
+	/** The command's op id (store it in the row's op_id column). */
+	public function op(): string {
+		return $this->op;
+	}
+
+	/** The command's one clock, epoch ms. */
+	public function now(): int {
+		return $this->now;
+	}
+
+	/** The actor kind and department (Azl_Access::who). */
+	public function who(): array {
+		return $this->who ?? array( 'kind' => 'none', 'dept' => null );
+	}
+
+	/**
+	 * Writes a history row. The first call of a command is its claim: false means this op already ran, and the
+	 * handler must stop and return replay(). Later calls add more history to the same op.
+	 */
+	public function claim( string $entity, string $entity_id, string $what ): bool {
+		return $this->event( $entity, $entity_id, $what );
+	}
+
+	/** The answer for an op that already ran (a concurrent copy committed first). */
+	public function replay( array $cmd ): array {
+		return $this->replayed( $cmd );
 	}
 
 	private function dispatch( array $cmd ): array {
@@ -226,27 +287,27 @@ final class Azl_Commands {
 			case 'returnOrphans':
 				return $this->return_orphans( $cmd );
 			default:
-				return self::fail( 'Unknown command' );
+				return $this->module_command( $cmd );
 		}
 	}
 
-	/* ---------- helpers ---------- */
+	/* ---------- helpers (public: module commands answer the same way) ---------- */
 
-	private static function fail( string $error ): array {
+	public static function fail( string $error ): array {
 		return array( 'ok' => false, 'error' => $error );
 	}
 
-	private static function ok( array $extra = array() ): array {
+	public static function ok( array $extra = array() ): array {
 		return array_merge( array( 'ok' => true, 'applied' => true ), $extra );
 	}
 
 	/** A one-line text field: sanitised and trimmed, or '' when not a string. */
-	private static function line( $v ): string {
+	public static function line( $v ): string {
 		return is_string( $v ) ? trim( sanitize_text_field( $v ) ) : '';
 	}
 
 	/** A multi-line text field: sanitised and trimmed, or '' when not a string. */
-	private static function para( $v ): string {
+	public static function para( $v ): string {
 		return is_string( $v ) ? trim( sanitize_textarea_field( $v ) ) : '';
 	}
 
@@ -282,6 +343,11 @@ final class Azl_Commands {
 				return array( 'incidentNo' => (int) $x['inc_no'] );
 			}
 			return null === $x ? array( 'clusteredInto' => $entity_id ) : array( 'incidentNo' => (int) $x['inc_no'], 'clusteredInto' => $entity_id );
+		}
+		$def = is_string( $type ) && ! isset( self::REQUIRED_IDS[ $type ] ) ? Azl_Modules::command( $type ) : null;
+		if ( null !== $def && isset( $def['prior'] ) ) {
+			$extra = ( $def['prior'] )( $entity_id );
+			return is_array( $extra ) ? $extra : array();
 		}
 		return array();
 	}

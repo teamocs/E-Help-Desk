@@ -2,16 +2,20 @@ import { motion } from 'motion/react';
 import { isOpen, sla } from '../domain/rules';
 import { ackHandover, returnOrphans, setUI, useApp } from '../domain/store';
 import { springs } from '../lib/motion';
-import { Button, DeptChip, Group, Icon, Pill, Row, Screen } from '../ui/kit';
+import { Button, DeptChip, Group, Icon, Pill, Row } from '../ui/kit';
 
 /** A sign-off older than one shift belongs to an earlier handover, so the next officer can sign again. */
 const SHIFT_MS = 8 * 3_600_000;
 
-export function Handover() {
+/**
+ * The shift handover, as a panel on the Dashboard (it was its own screen before the prototype's 11-item sidebar):
+ * promises to guests, work whose owner went off shift, what is already overdue, and the incoming officer's sign-off.
+ * The counts it used to show are the Dashboard's own counts now.
+ */
+export function HandoverPanel() {
   const items = useApp((s) => s.items);
   const requests = useApp((s) => s.requests);
   const staff = useApp((s) => s.staff);
-  const cleaning = useApp((s) => s.cleaning);
   const ack = useApp((s) => s.handover);
   const now = useApp((s) => s.now);
 
@@ -22,25 +26,14 @@ export function Handover() {
   const promises = open.filter((i) => roomOf(i.requestId)?.vip || /late checkout/i.test(i.name));
   const off = new Set(staff.filter((p) => !p.onShift).map((p) => p.id));
   const orphans = open.filter((i) => i.assignee && off.has(i.assignee));
-  const queued = cleaning.filter((c) => c.status === 'queued' || c.status === 'scheduled').length;
-
-  const tiles = [
-    { label: 'Open', n: open.length, tone: '' },
-    { label: 'Overdue', n: overdue.length, tone: overdue.length ? 'var(--bad)' : '' },
-    { label: 'On hold', n: held.length, tone: held.length ? 'var(--warn)' : '' },
-    { label: 'Rooms to clean', n: queued, tone: '' },
-  ];
 
   return (
-    <Screen title="Shift handover" subtitle="One screen for the next officer. Nothing lives in someone’s head.">
-      <div className="group tiles">
-        {tiles.map((t) => (
-          <div key={t.label} className="tile">
-            <div className="stat" style={{ color: t.tone || undefined }}>{t.n}</div>
-            <div className="t-sub c2">{t.label}</div>
-          </div>
-        ))}
-      </div>
+    <section className="dash-panel" aria-labelledby="handover-title">
+      <h2 id="handover-title" className="dash-h">Shift handover</h2>
+      <p className="t-sub c2" style={{ margin: 0 }}>For the next officer. Nothing lives in someone’s head.</p>
+      {!promises.length && !orphans.length && !overdue.length && (
+        <p className="t-body" style={{ margin: '12px 0 0' }}>Nothing promised, orphaned or overdue to hand over{held.length ? `; ${held.length} on hold` : ''}.</p>
+      )}
 
       {promises.length > 0 && (
         <Group title="Promises made to guests" note="VIP rooms and late-checkout requests. The incoming officer owns these from the first minute.">
@@ -82,6 +75,6 @@ export function Handover() {
           </>
         )}
       </div>
-    </Screen>
+    </section>
   );
 }

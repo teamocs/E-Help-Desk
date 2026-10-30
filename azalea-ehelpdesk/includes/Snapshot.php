@@ -43,7 +43,12 @@ final class Azl_Snapshot {
 		return array( 'id' => $id, 'name' => $name );
 	}
 
-	public static function load(): array {
+	/**
+	 * @param array|null $who The reader (Azl_Access::who); by default the signed-in WordPress user with no PIN actor.
+	 *                        Module slices (snapshot.modules.<id>) are only sent for modules the reader may read.
+	 */
+	public static function load( ?array $who = null ): array {
+		$who      = $who ?? Azl_Access::who( (int) get_current_user_id(), null );
 		$now      = Azl_Db::now();
 		$rev      = Azl_Db::counter( 'change' ); // read first: a write landing during the read only causes one extra refresh
 		$property = self::property();
@@ -68,6 +73,8 @@ final class Azl_Snapshot {
 			'rev'        => $rev,
 			// The hotel's lists. A save bumps the change counter, so every phone gets them on its next poll.
 			'catalog'    => Azl_Catalog::get(),
+			// Each module's own data, keyed by module id: only the modules this reader may read (Azl_Access).
+			'modules'    => (object) Azl_Modules::snapshot( $who ),
 		);
 	}
 

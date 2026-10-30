@@ -41,7 +41,20 @@ export interface Snapshot {
   at: number;
   /** The hotel's lists (departments, request types, bundles, hold reasons, job titles, findings). */
   catalog?: Catalog;
+  /**
+   * Each module's own data, keyed by module id (Azl_Module::snapshot() on the server). Only the modules the reader
+   * may read are present. Read it with moduleData() in src/domain/store.ts.
+   */
+  modules?: Record<string, unknown>;
 }
+
+/**
+ * A module's own command (Azl_Module::commands() on the server): any type a module registers, with its fields.
+ * Sent with runModuleCommand() through the same offline outbox, with a fresh opId, so a resend never applies twice.
+ */
+export type ModuleCommand = Base & { type: string; [field: string]: unknown };
+/** Every command the outbox can carry. */
+export type AnyCommand = Command | ModuleCommand;
 
 interface Base {
   opId: string;

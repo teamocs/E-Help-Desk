@@ -33,7 +33,7 @@ export function Settings() {
   const idx = Math.max(0, SIZES.findIndex((x) => x >= prefs.textScale));
   const asAccount = me?.id === 'member';
   return (
-    <Screen title="Settings" subtitle="Comfortable at 3 a.m. on a shared phone.">
+    <Screen title="Configuration" subtitle="Comfortable at 3 a.m. on a shared phone.">
       {me && (
         <Group title="Signed in">
           <div className="row" style={{ flexWrap: 'wrap' }}>
@@ -75,7 +75,7 @@ export function Settings() {
         <Toggle k="sound" icon="bell" title="Sounds" sub="Only safety alerts and finished items make a sound" />
       </Group>
 
-      <Group title="Keyboard" note="Single-key shortcuts: N for a new request, 1 to 6 to switch screens.">
+      <Group title="Keyboard" note="Single-key shortcuts: N for a new request, 1 to 9 for the first nine screens.">
         <Toggle k="shortcuts" icon="list" title="Keyboard shortcuts" sub="Turn off if you use voice control or a screen reader" />
       </Group>
     </Screen>

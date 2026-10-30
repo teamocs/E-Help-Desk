@@ -13,7 +13,7 @@ describe("WordPress desk wiring", () => {
 
   it("reads window.AZL with safe defaults: unknown roles act as a shared device, polling stays within 5 to 30 s", () => {
     const cfg = readConfig({ AZL: { restUrl: "/x/", nonce: "n", pollMs: 1000, property: { id: 1 }, user: { name: "X", role: "administrator", canManage: "yes" } } });
-    expect(cfg.user).toEqual({ name: "X", role: "device", canManage: false });
+    expect(cfg.user).toEqual({ name: "X", role: "device", canManage: false, modules: {} });
     expect(cfg.pollMs).toBe(5000);
     expect(readConfig({ AZL: { ...cfg, pollMs: 99_000 } }).pollMs).toBe(30_000);
     expect(() => readConfig({})).toThrow();

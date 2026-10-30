@@ -98,10 +98,27 @@ function seed_staff(): void {
 	}
 }
 
+/** The account a command comes from when a test signed nobody in: a Hotel Owner (full access to every module). */
+const TEST_OWNER = 1;
+
+/** Applies a command as the signed-in account, or as TEST_OWNER when nobody is signed in. */
+function apply_as_account( array $c, ?string $actor ): array {
+	if ( 0 !== get_current_user_id() ) {
+		return Azl_Commands::apply( $c, $actor );
+	}
+	$GLOBALS['azl_wp']['caps'][ TEST_OWNER ] = array_fill_keys( Azl_Caps::ROLES['azl_owner'][1], true );
+	$GLOBALS['azl_wp']['user']               = TEST_OWNER;
+	try {
+		return Azl_Commands::apply( $c, $actor );
+	} finally {
+		$GLOBALS['azl_wp']['user'] = 0;
+	}
+}
+
 /** Runs one command with a fresh opId (unless given) as $actor. */
 function cmd( array $c, ?string $actor = MARIA ): array {
 	$c += array( 'opId' => id() );
-	return Azl_Commands::apply( $c, $actor );
+	return apply_as_account( $c, $actor );
 }
 
 /** Logs a request. Bundles here have two parts. @return array{0: string, 1: string[], 2: array} */
@@ -137,11 +154,11 @@ function fingerprint(): array {
 /** Applies a command, then the same command again, and checks the second time changed nothing. */
 function twice( array $c, ?string $actor = MARIA ): array {
 	$c    += array( 'opId' => id() );
-	$first = Azl_Commands::apply( $c, $actor );
+	$first = apply_as_account( $c, $actor );
 	has( array( 'ok' => true, 'applied' => true ), $first, 'first ' . $c['type'] );
 	$before = fingerprint();
 	azl_advance( 1000 );
-	$again = Azl_Commands::apply( $c, $actor );
+	$again = apply_as_account( $c, $actor );
 	has( array( 'ok' => true, 'applied' => false ), $again, 'replay ' . $c['type'] );
 	eq( $before, fingerprint(), 'rows after replaying ' . $c['type'] );
 	return array( $first, $again );

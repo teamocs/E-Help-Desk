@@ -50,7 +50,7 @@ final class Azl_Rest {
 		register_rest_route( self::NS, '/catalog', array( 'methods' => 'GET', 'callback' => array( self::class, 'catalog' ), 'permission_callback' => $desk ) );
 		register_rest_route(
 			self::NS,
-			'/catalog/(?P<list>' . implode( '|', Azl_Catalog::LISTS ) . ')',
+			'/catalog/(?P<list>' . implode( '|', Azl_Catalog::lists() ) . ')',
 			array( 'methods' => 'PUT', 'callback' => array( self::class, 'put_catalog' ), 'permission_callback' => array( self::class, 'can_manage_lists' ) )
 		);
 	}
@@ -78,8 +78,12 @@ final class Azl_Rest {
 	/** GET /snapshot */
 	public static function snapshot( $request ) {
 		return self::guard(
-			static function () {
-				return self::reply( Azl_Snapshot::load() );
+			static function () use ( $request ) {
+				// The module slices follow who reads: on a shared phone, the person signed in with a PIN. A token
+				// that has ended reads as nobody (no slices), never as an error: the snapshot itself stays readable.
+				$user  = (int) get_current_user_id();
+				$actor = Azl_Staff::actor_for( $user, $request->get_header( self::ACTOR_HEADER ) );
+				return self::reply( Azl_Snapshot::load( Azl_Access::who( $user, $actor['ok'] ? $actor['staff'] : null ) ) );
 			}
 		);
 	}

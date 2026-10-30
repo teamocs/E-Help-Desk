@@ -155,6 +155,8 @@ export interface State {
   reconciling: boolean;
   netlog: { at: number; text: string }[];
   handover: Handover;
+  /** Each module's own data from the latest snapshot (snapshot.modules), keyed by module id. Read with moduleData(). */
+  modules: Record<string, unknown>;
   prefs: Prefs;
   toasts: Toast[];
   announce: string;

@@ -1,56 +1,68 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, MotionConfig, motion } from 'motion/react';
-import { isOpen } from './domain/rules';
-import { app, go, lock, myStaff, openComposer, setUI, syncPrefs, tick, useApp, useUI, type AccountRole, type Tab } from './domain/store';
+import { app, go, lock, myStaff, openComposer, setUI, syncPrefs, tick, useApp, useUI, type AccountRole, type UI } from './domain/store';
 import type { State } from './domain/types';
 import { staffApi } from './domain/staffApi';
 import { haptic } from './lib/haptics';
 import { springs } from './lib/motion';
+import { MODULES, badgeText, visibleModules } from './modules/registry';
+import type { ModuleDef } from './modules/types';
 import { Announcer, Avatar, Button, ConnChip, Group, Icon, Row, Toasts, useTier } from './ui/kit';
 import { Sheet } from './ui/sheet';
 import { Composer } from './screens/Composer';
-import { RequestDetail } from './screens/Detail';
-import { Handover } from './screens/Handover';
-import { Housekeeping } from './screens/Housekeeping';
-import { Insights } from './screens/Insights';
-import { Maintenance, WoDetail } from './screens/Maintenance';
-import { Requests } from './screens/Requests';
 import { Safety } from './screens/Safety';
-import { Settings } from './screens/Settings';
 
-const NAV: { tab: Tab; label: string; icon: string }[] = [
-  { tab: 'requests', label: 'Requests', icon: 'list' },
-  { tab: 'maintenance', label: 'Work orders', icon: 'wrench' },
-  { tab: 'housekeeping', label: 'Housekeeping', icon: 'broom' },
-  { tab: 'handover', label: 'Handover', icon: 'hand' },
-  { tab: 'insights', label: 'Insights', icon: 'chart' },
-  { tab: 'settings', label: 'Settings', icon: 'gear' },
-];
-
-/** A shared phone sees the four work screens only; everyone else sees everything (Settings hides staff admin by role). */
-export const tabsFor = (role: AccountRole) => (role === 'device' ? NAV.filter((n) => n.tab !== 'insights' && n.tab !== 'settings') : NAV);
 export const ROLE_NAME: Record<AccountRole, string> = { owner: 'Hotel owner', manager: 'Manager', supervisor: 'Supervisor', device: 'Shared phone' };
 
-const useNav = () => tabsFor(useUI((s) => s.account.role));
+/** The modules this desk shows: the registry, filtered by the role matrix for this account or PIN person. */
+export function useNav(): ModuleDef[] {
+  const role = useUI((s) => s.account.role);
+  const accountModules = useUI((s) => s.account.modules);
+  const access = useUI((s) => s.access);
+  const me = useApp(myStaff);
+  const catalog = useApp((s) => s.catalog);
+  return useMemo(() => visibleModules({ role, accountModules, access, me, catalog }), [role, accountModules, access, me, catalog]);
+}
 
-function Screens() {
+/** The module on screen: the chosen one when this viewer may see it, else the first they may. */
+function useCurrent(nav: ModuleDef[]): ModuleDef | undefined {
   const tab = useUI((s) => s.tab);
-  const nav = useNav();
-  const shown = nav.some((n) => n.tab === tab) ? tab : 'requests';
-  const view: Record<Tab, ReactNode> = {
-    requests: <Requests />, maintenance: <Maintenance />, housekeeping: <Housekeeping />, handover: <Handover />,
-    insights: <Insights />, settings: <Settings />,
-  };
+  return nav.find((m) => m.id === tab) ?? nav[0];
+}
+
+/** The open record of the current module's detail pane, if any. */
+function useDetail(mod: ModuleDef | undefined): string | undefined {
+  return useUI((s: UI) => mod?.detail?.selected(s));
+}
+
+function Loading() {
+  return <main className="screen" id="main" tabIndex={-1}><p className="c2" role="status" style={{ padding: '2rem 0' }}>Loading…</p></main>;
+}
+
+function Screens({ mod }: { mod: ModuleDef | undefined }) {
+  if (!mod) {
+    return <main className="screen" id="main" tabIndex={-1}><p className="c2" style={{ padding: '2rem 0' }}>This account has no screens on the desk. Ask your hotel owner or manager.</p></main>;
+  }
+  const View = mod.Screen;
   return (
     <AnimatePresence mode="wait" initial={false}>
-      <motion.div key={shown} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
-        {view[shown]}
+      <motion.div key={mod.id} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.14 }}>
+        <Suspense fallback={<Loading />}><View /></Suspense>
       </motion.div>
     </AnimatePresence>
   );
 }
 
-const openRequests = (s: State) => s.requests.filter((r) => r.itemIds.some((id) => s.items[id] && isOpen(s.items[id]))).length;
+/** Every module's badge count, from one store read (a stable string, so the sidebar re-renders only when one changes). */
+function useBadges(): Record<string, number> {
+  const key = useApp((s: State) => MODULES.map((m) => (m.badge ? m.badge(s) : -1)).join(','));
+  return useMemo(() => Object.fromEntries(key.split(',').map((n, i) => [MODULES[i].id, Number(n)])), [key]);
+}
+
+function Badge({ n, label, quiet }: { n: number | undefined; label: string; quiet?: boolean }) {
+  const text = n == null || n < 0 ? null : badgeText(n);
+  return text == null ? null : <span className={`badge ${quiet ? 'quiet' : ''}`} aria-label={`${text} ${label}`}>{text}</span>;
+}
 
 /** Back to the PIN screen. On a shared phone the previous person is signed out first, so nobody inherits their name. */
 async function switchPerson(deviceOnly: boolean) {
@@ -121,6 +133,7 @@ function UserMenu({ compact }: { compact?: boolean }) {
             <span className="t-foot c2">{ROLE_NAME[account.role]}{person && !deviceOnly ? ` · acting as ${person.name}` : ''}{person && deviceOnly ? ` · ${person.name} signed in` : ''}</span>
           </div>
           <button type="button" className="usermenu-item" onClick={() => { setOpen(false); void switchPerson(deviceOnly); }}><Icon name="user" size={20} /> Switch person</button>
+          <button type="button" className="usermenu-item" onClick={() => { setOpen(false); setUI({ sheet: 'paper' }); }}><Icon name="printer" size={20} /> Paper kit</button>
           <button type="button" className="usermenu-item" disabled={busy} onClick={async () => { setBusy(true); await staffApi.current?.logout(); setBusy(false); }}><Icon name="signout" size={20} /> {busy ? 'Signing out…' : 'Sign out'}</button>
         </div>
       )}
@@ -128,21 +141,24 @@ function UserMenu({ compact }: { compact?: boolean }) {
   );
 }
 
-function Sidebar() {
-  const tab = useUI((s) => s.tab);
-  const open = useApp(openRequests);
-  const nav = useNav();
+export function Sidebar({ nav, current }: { nav: ModuleDef[]; current?: string }) {
+  const badges = useBadges();
   return (
     <nav className="side" aria-label="Main">
       <Brand />
       <Button block icon="plus" feel="medium" onClick={() => openComposer()}>New request</Button>
       <div style={{ height: 8 }} />
-      {nav.map((n) => (
-        <button key={n.tab} type="button" className="side-item" aria-current={tab === n.tab ? 'page' : undefined} onClick={() => { haptic('select'); go(n.tab); }}>
-          <Icon name={n.icon} weight={tab === n.tab ? 'fill' : 'regular'} /> {n.label}
-          {n.tab === 'requests' && open > 0 && <span className="badge quiet" aria-label={`${open} open`}>{open}</span>}
-        </button>
-      ))}
+      <ul className="side-list" role="list">
+        {nav.map((m) => (
+          <li key={m.id}>
+            <button type="button" className="side-item" aria-current={current === m.id ? 'page' : undefined} onClick={() => { haptic('select'); go(m.id); }}>
+              <Icon name={m.icon} weight={current === m.id ? 'fill' : 'regular'} />
+              <span className="side-label">{m.label}</span>
+              <Badge n={badges[m.id]} label={m.badgeLabel ?? 'open'} />
+            </button>
+          </li>
+        ))}
+      </ul>
       <span className="side-gap" />
       <UserMenu />
     </nav>
@@ -159,50 +175,47 @@ function TopBar() {
   );
 }
 
-function TabBar() {
-  const tab = useUI((s) => s.tab);
-  const open = useApp(openRequests);
-  const nav = useNav();
-  const main = nav.slice(0, 4);
-  const more = !main.some((n) => n.tab === tab);
+export function TabBar({ nav, current }: { nav: ModuleDef[]; current?: string }) {
+  const badges = useBadges();
+  const main = nav.filter((m) => m.phoneTab);
+  const more = !main.some((m) => m.id === current);
   return (
     <nav className="tabbar" aria-label="Main">
-      {main.map((n) => (
-        <button key={n.tab} type="button" className="tab" aria-current={tab === n.tab ? 'page' : undefined} onClick={() => { haptic('select'); go(n.tab); }}>
-          <Icon name={n.icon} size={24} weight={tab === n.tab ? 'fill' : 'regular'} />
-          {n.label.split(' ')[0]}
-          {n.tab === 'requests' && open > 0 && <span className="badge" aria-label={`${open} open`}>{open}</span>}
+      {main.map((m) => (
+        <button key={m.id} type="button" className="tab" aria-current={current === m.id ? 'page' : undefined} onClick={() => { haptic('select'); go(m.id); }}>
+          <Icon name={m.icon} size={24} weight={current === m.id ? 'fill' : 'regular'} />
+          <span className="tab-label">{m.label}</span>
+          <Badge n={badges[m.id]} label={m.badgeLabel ?? 'open'} />
         </button>
       ))}
       <button type="button" className="tab" aria-current={more ? 'page' : undefined} aria-haspopup="dialog" onClick={() => { haptic('select'); setUI({ sheet: 'more' }); }}>
         <Icon name="list" size={24} weight={more ? 'fill' : 'regular'} />
-        More
+        <span className="tab-label">More</span>
       </button>
     </nav>
   );
 }
 
-function Sheets({ inspector }: { inspector: boolean }) {
-  const deviceOnly = useUI((s) => s.deviceOnly);
+export function Sheets({ nav, mod, inspector }: { nav: ModuleDef[]; mod?: ModuleDef; inspector: boolean }) {
   const sheet = useUI((s) => s.sheet);
-  const selItem = useUI((s) => s.selItem);
-  const selWo = useUI((s) => s.selWo);
-  const tab = useUI((s) => s.tab);
-  const nav = useNav();
+  const sel = useDetail(mod);
+  const badges = useBadges();
   const close = () => setUI({ sheet: null });
-  const detailOpen = !inspector && sheet === null && ((tab === 'requests' && !!selItem) || (tab === 'maintenance' && !!selWo));
+  const Detail = mod?.detail?.View;
   return (
     <>
       <Composer />
-      <Sheet open={detailOpen} title={tab === 'maintenance' ? 'Work order' : 'Ticket'} onClose={() => setUI({ selItem: undefined, selWo: undefined })}>
-        {tab === 'maintenance' && selWo ? <WoDetail id={selWo} /> : selItem ? <RequestDetail id={selItem} /> : null}
+      <Sheet open={!inspector && sheet === null && !!sel && !!Detail} title={mod?.detail?.title ?? ''} onClose={() => setUI({ selItem: undefined, selWo: undefined })}>
+        {Detail && sel ? <Detail id={sel} /> : null}
       </Sheet>
       <Sheet open={sheet === 'more'} title="More" onClose={close}>
         <Group>
-          {nav.slice(4).map((n) => <Row key={n.tab} icon={n.icon} tint="var(--accent-strong)" title={n.label} chevron onClick={() => go(n.tab)} />)}
+          {nav.filter((m) => !m.phoneTab).map((m) => {
+            const n = badges[m.id];
+            const text = n == null || n < 0 ? null : badgeText(n);
+            return <Row key={m.id} icon={m.icon} tint="var(--accent-strong)" title={m.label} trailing={text == null ? undefined : <span className="badge" aria-label={`${text} ${m.badgeLabel ?? 'open'}`}>{text}</span>} chevron onClick={() => go(m.id)} />;
+          })}
           <Row icon="printer" title="Paper kit" chevron onClick={() => setUI({ sheet: 'paper' })} />
-          <Row icon="user" title="Switch person" chevron onClick={() => void switchPerson(deviceOnly)} />
-          <Row icon="signout" title="Sign out" onClick={() => void staffApi.current?.logout()} />
         </Group>
       </Sheet>
       <Sheet open={sheet === 'paper'} title="Paper kit" onClose={close}><Paper /></Sheet>
@@ -240,12 +253,12 @@ function Paper() {
 
 export function Shell() {
   const tier = useTier();
-  const tab = useUI((s) => s.tab);
-  const selItem = useUI((s) => s.selItem);
-  const selWo = useUI((s) => s.selWo);
   const nav = useNav();
+  const mod = useCurrent(nav);
+  const sel = useDetail(mod);
   const wide = tier === 'desktop' || tier === 'wide';
-  const inspector = wide && ((tab === 'requests' && !!selItem) || (tab === 'maintenance' && !!selWo));
+  const Detail = mod?.detail?.View;
+  const inspector = wide && !!sel && !!Detail;
   const cols = [tier === 'phone' ? '' : '256px', 'minmax(0,1fr)', inspector ? 'minmax(340px,420px)' : ''].filter(Boolean).join(' ');
 
   useEffect(() => {
@@ -255,7 +268,7 @@ export function Shell() {
       if (t.closest('input, textarea, select, [role="dialog"], [role="alertdialog"]') || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'n') { e.preventDefault(); openComposer(); }
       const i = Number(e.key);
-      if (i >= 1 && i <= nav.length) go(nav[i - 1].tab);
+      if (i >= 1 && i <= Math.min(9, nav.length)) go(nav[i - 1].id);
     };
     window.addEventListener('keydown', on);
     return () => window.removeEventListener('keydown', on);
@@ -264,27 +277,27 @@ export function Shell() {
   return (
     <>
       <div className={`app ${wide ? 'wide' : ''}`} style={{ gridTemplateColumns: cols }}>
-        {tier !== 'phone' && <Sidebar />}
+        {tier !== 'phone' && <Sidebar nav={nav} current={mod?.id} />}
         <div className="main">
           {tier === 'phone' && <TopBar />}
-          <Screens />
-          {tier === 'phone' && tab === 'requests' && (
+          <Screens mod={mod} />
+          {tier === 'phone' && mod?.fab && (
             <motion.button type="button" className="fab" whileTap={{ scale: 0.94 }} initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={springs.gentle} onClick={() => { haptic('medium'); openComposer(); }}>
               <Icon name="plus" size={24} /> New request
             </motion.button>
           )}
-          {tier === 'phone' && <TabBar />}
+          {tier === 'phone' && <TabBar nav={nav} current={mod?.id} />}
         </div>
-        {inspector && (
+        {inspector && Detail && sel && (
           <aside className="insp" aria-label="Details">
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
               <button type="button" className="iconbtn" aria-label="Close details" onClick={() => setUI({ selItem: undefined, selWo: undefined })}><Icon name="x" /></button>
             </div>
-            {tab === 'maintenance' && selWo ? <WoDetail id={selWo} /> : selItem ? <RequestDetail id={selItem} /> : null}
+            <Detail id={sel} />
           </aside>
         )}
       </div>
-      <Sheets inspector={inspector} />
+      <Sheets nav={nav} mod={mod} inspector={inspector} />
     </>
   );
 }

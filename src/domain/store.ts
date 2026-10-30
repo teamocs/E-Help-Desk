@@ -6,6 +6,7 @@ import { haptic, hapticsConfig, tone } from '../lib/haptics';
 import type { Hazard, HoldReason, Item, Incident, Prefs, State, Toast, WorkOrder } from './types';
 import type { Snapshot } from './contract';
 import { remote, type Draft } from './remote';
+import type { Level, Matrix } from '../modules/access';
 
 /* ---------- tiny observable store (SwiftUI @Observable in spirit) ---------- */
 export function createStore<S>(init: S) {
@@ -52,6 +53,7 @@ export function initialState(now = Date.now()): State {
     reconciling: false,
     netlog: [],
     handover: {},
+    modules: {},
     prefs: { textScale: 1, contrast: false, motion: 'auto', haptics: true, sound: true, shortcuts: true },
     toasts: [],
     announce: '',
@@ -60,7 +62,7 @@ export function initialState(now = Date.now()): State {
 
 export const app = createStore<State>(initialState());
 export function useApp<T>(sel: (s: State) => T): T {
-  return useSyncExternalStore(app.sub, () => sel(app.get()));
+  return useSyncExternalStore(app.sub, () => sel(app.get()), () => sel(app.get()));
 }
 export function resetApp(now = Date.now()) {
   const keep = { me: app.get().me, prefs: app.get().prefs };
@@ -69,7 +71,8 @@ export function resetApp(now = Date.now()) {
 }
 
 /* ---------- ui state ---------- */
-export type Tab = 'requests' | 'maintenance' | 'housekeeping' | 'handover' | 'insights' | 'settings';
+/** The open screen: a module id from src/modules/registry.ts. */
+export type Tab = string;
 export type Sheet = null | 'composer' | 'safety' | 'paper' | 'more' | 'incident';
 export type AccountRole = 'owner' | 'manager' | 'supervisor' | 'device';
 /** The WordPress account this desk is signed in with, and the hotel it belongs to. */
@@ -78,10 +81,14 @@ export interface Account {
   role: AccountRole;
   hotel: string;
   logoUrl: string;
+  /** The modules this account may see, from the server (window.AZL.user.modules). Empty on a shared phone. */
+  modules?: Record<string, Level>;
 }
 export interface UI {
   screen: 'lock' | 'app';
   tab: Tab;
+  /** The server's role matrix (window.AZL.access); src/modules/access.ts MATRIX until it arrives. */
+  access?: Matrix;
   selItem?: string;
   selWo?: string;
   sheet: Sheet;
@@ -97,9 +104,9 @@ export interface UI {
   deviceOnly: boolean;
   account: Account;
 }
-export const ui = createStore<UI>({ screen: 'lock', tab: 'requests', sheet: null, remote: false, sync: { pending: 0, offline: false }, pollDown: false, deviceOnly: false, account: { name: '', role: 'device', hotel: '', logoUrl: '' } });
+export const ui = createStore<UI>({ screen: 'lock', tab: 'dashboard', sheet: null, remote: false, sync: { pending: 0, offline: false }, pollDown: false, deviceOnly: false, account: { name: '', role: 'device', hotel: '', logoUrl: '' } });
 export function useUI<T>(sel: (s: UI) => T): T {
-  return useSyncExternalStore(ui.sub, () => sel(ui.get()));
+  return useSyncExternalStore(ui.sub, () => sel(ui.get()), () => sel(ui.get()));
 }
 /** Owners and managers edit the hotel's lists (the server's azl_manage_lists); supervisors and shared phones only read them. */
 export const canEditLists = (role: AccountRole) => role === 'owner' || role === 'manager';
@@ -530,7 +537,35 @@ export function applySnapshot(snap: Snapshot, member?: State['staff'][number]) {
     incidents: snap.incidents,
     handover: snap.handover,
     seq: snap.seq,
+    // An older plugin sends no modules: no module data, never an error.
+    modules: snap.modules && typeof snap.modules === 'object' ? snap.modules : {},
   }));
+}
+
+/* ---------- modules: their own data and commands ---------- */
+
+/**
+ * The shape of each module's snapshot slice. A module adds its own entry from its own file, without editing this one:
+ *   declare module '../../domain/store' { interface ModuleSlices { inquiries: { list: Inquiry[] } } }
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- filled in by each module through declaration merging
+export interface ModuleSlices {}
+
+/** A module's data from the latest snapshot, or undefined (not loaded yet, or the reader may not read it). */
+export function moduleData<K extends keyof ModuleSlices & string>(s: State, id: K): ModuleSlices[K] | undefined;
+export function moduleData<T = unknown>(s: State, id: string): T | undefined;
+export function moduleData(s: State, id: string): unknown {
+  return s.modules[id];
+}
+
+/**
+ * Sends a module's own command through the offline outbox, like every built-in command: a fresh opId, so a resend
+ * after a dropped connection never applies twice. `local` changes the module's slice at once (optimistic); the next
+ * snapshot replaces it with the server's. `refs` are row ids to mark as waiting while offline.
+ */
+export function runModuleCommand(module: string, type: string, fields: Record<string, unknown>, local?: (slice: unknown, s: State) => unknown, refs: string[] = []) {
+  if (local) commit(type, (s) => ({ ...s, modules: { ...s.modules, [module]: local(s.modules[module], s) } }), refs);
+  remote.sendModule({ ...fields, type });
 }
 
 /** A list editor saved: every screen follows at once (the next snapshot carries the same lists). */

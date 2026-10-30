@@ -208,7 +208,7 @@ test(
 		}
 		ok( false !== strpos( implode( '', Azl_Schema::sql() ), 'UNIQUE KEY op_entity_what (op_id,entity_id,what)' ), 'events unique on op + entity + what' );
 		eq( Azl_Schema::VERSION, get_option( 'azl_db_version' ) );
-		eq( array( 'change', 'inc', 'ticket', 'wo' ), array_column( Azl_Db::rows( 'SELECT name FROM ' . Azl_Db::t( 'seq' ) . ' ORDER BY name' ), 'name' ) );
+		eq( array( 'change', 'cr', 'hs', 'inc', 'inq', 'ticket', 'tr', 'wo' ), array_column( Azl_Db::rows( 'SELECT name FROM ' . Azl_Db::t( 'seq' ) . ' ORDER BY name' ), 'name' ) );
 		cmd( array( 'type' => 'ackHandover', 'handoverId' => id() ) );
 		Azl_Schema::install();
 		eq( 1, Azl_Db::counter( 'change' ), 'a second install keeps the counters' );
@@ -250,9 +250,10 @@ test(
 		$empty = json_decode( json_encode( Azl_Snapshot::load() ) );
 		eq( '{}', json_encode( $empty->items ) );
 		eq( '{}', json_encode( $empty->handover ) );
+		eq( '{}', json_encode( $empty->modules ), 'no module slices without modules' );
 		$snap_keys = array_keys( Azl_Snapshot::load() );
 		sort( $snap_keys );
-		eq( array( 'at', 'catalog', 'cleaning', 'handover', 'incidents', 'items', 'properties', 'property', 'requests', 'rev', 'seq', 'staff', 'wos' ), $snap_keys );
+		eq( array( 'at', 'catalog', 'cleaning', 'handover', 'incidents', 'items', 'modules', 'properties', 'property', 'requests', 'rev', 'seq', 'staff', 'wos' ), $snap_keys );
 
 		list( $request, $items, $res ) = logged( '501', array( 'towels', 'water' ), array( 'vip' => true, 'remarks' => 'Guest <b>asleep</b>' ) );
 		cmd( array( 'type' => 'relay', 'itemId' => $items[0] ) );

@@ -17,6 +17,8 @@ const NAMES = {
   spa: "FlowerLotus", shirt: "TShirt", key: "Key", car: "Car", suitcase: "Suitcase", food: "ForkKnife", coffee: "Coffee",
   firstaid: "FirstAid", phone: "Phone", trash: "Trash", plug: "Plug", bug: "Bug", pool: "SwimmingPool", baby: "Baby",
   up: "CaretUp", down: "CaretDown",
+  // The sidebar modules (src/modules): Dashboard, Inquiries, House Status, Transport.
+  gauge: "Gauge", chat: "ChatCircle", note: "NotePencil", van: "Van",
 };
 
 const require = createRequire(import.meta.url);

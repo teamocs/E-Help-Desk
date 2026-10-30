@@ -8,6 +8,8 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 // The desk's own catalog rules (Node runs the TypeScript file directly): seed, validation and the in-use check.
 import { LISTS, SEED_CATALOG, deleteBlocker, validateList } from "../src/domain/catalog.ts";
+// The role matrix (the desk's copy of Azl_Access): window.AZL.user.modules, window.AZL.access and command refusals.
+import { LABELS, MATRIX, kindOfStaffRole, levelOf } from "../src/modules/access.ts";
 
 const PORT = Number(process.env.PORT) || 8787;
 const root = fileURLToPath(new URL("../azalea-ehelpdesk/assets/", import.meta.url));
@@ -116,6 +118,22 @@ function putList(list, b) {
   return [200, { ok: true, catalog, usage: usage() }];
 }
 
+/* ---------- access: the same answers as Azl_Access ---------- */
+const COMMAND_MODULE = { ackHandover: "dashboard", returnOrphans: "dashboard", assessWo: "workorders", startWo: "workorders", holdWo: "workorders", completeWo: "workorders", reopenWo: "workorders", cleanSet: "cleaning", raiseSafety: "crisis", downgradeIncident: "crisis", record911: "crisis", resolveIncident: "crisis" };
+const repairs = (dept) => catalog.departments.some((d) => d.key === dept && d.active && d.repairs);
+const whoOf = (role, actor) => (role === "device" ? (() => { const p = staff.find((x) => x.id === actor); return { kind: kindOfStaffRole(p?.role), dept: p?.dept }; })() : { kind: role });
+const levels = (who) => Object.fromEntries(Object.keys(MATRIX).map((m) => [m, levelOf(m, who, MATRIX, repairs)]).filter(([, l]) => l !== "none"));
+function refusal(c, who) {
+  const mod = COMMAND_MODULE[c.type] ?? "requests";
+  if (who.kind === "none") return "Sign in with your PIN first.";
+  const level = levelOf(mod, who, MATRIX, repairs);
+  if (level === "none") return `Your role cannot use ${LABELS[mod]}.`;
+  if (level === "read") return `Your role can only view ${LABELS[mod]}.`;
+  if (level === "own" && c.type === "resolveIncident") return `Only a supervisor or manager can do this in ${LABELS[mod]}.`;
+  if (level === "own" && who.kind === "staff" && c.itemId && db.items[c.itemId] && db.items[c.itemId].dept !== who.dept) return "You can only work on items of your own department.";
+  return null;
+}
+
 /* ---------- commands: just enough to keep the screens honest ---------- */
 const activeIn = (list, key) => catalog[list].find((x) => x.key === key && x.active);
 function apply(c, by) {
@@ -180,7 +198,8 @@ function page(url, res) {
   if (!manifest) return send(res, 503, "Run npm run build:wp first.", "text/plain");
   const vars = Object.entries({ ...hotel.vars, ...SHARED }).map(([k, v]) => `${k}:${v}`).join(";");
   const AZL = { restUrl: `http://localhost:${PORT}${NS}/`, nonce: "mock-nonce", loginUrl: "/helpdesk/login/", pollMs: 5000, property: { id: `mock-${key}`, name: hotel.name },
-    user: { name: role === "device" ? "Front desk phone" : role === "owner" ? "Mr. Reyes" : "Ana Villanueva", role, canManage: role === "owner" || role === "manager", canManageLists: role === "owner" || role === "manager" },
+    user: { name: role === "device" ? "Front desk phone" : role === "owner" ? "Mr. Reyes" : role === "supervisor" ? "Liza Abad" : "Ana Villanueva", role, canManage: role === "owner" || role === "manager", canManageLists: role === "owner" || role === "manager", modules: role === "device" ? {} : levels({ kind: role }) },
+    access: MATRIX,
     theme: { key, name: hotel.name, logoUrl: url.searchParams.get("logo") === "0" ? "" : `/logo.svg?h=${key}`, fonts: {} }, version: "mock" };
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Set-Cookie": `azl_role=${role}; Path=/; SameSite=Lax` });
   res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light"><title>E-Help Desk · ${hotel.name}</title>
@@ -203,12 +222,15 @@ createServer(async (req, res) => {
   }
   if (!p.startsWith(NS)) return send(res, 404, "Not found", "text/plain");
   const r = p.slice(NS.length), actor = /^tok-(.+)$/.exec(req.headers["x-azl-actor"] ?? "")?.[1] ?? null, role = roleOf(req);
-  if (r === "/snapshot") return send(res, 200, { ...db, staff, property: { id: "mock", name: "Mock" }, properties: [], at: Date.now(), actor, catalog });
+  // Module slices: none of the wave 2 modules exist yet, so every reader gets an empty object.
+  if (r === "/snapshot") return send(res, 200, { ...db, staff, property: { id: "mock", name: "Mock" }, properties: [], at: Date.now(), actor, catalog, modules: {} });
   if (r === "/catalog" && m === "GET") return send(res, 200, { ok: true, catalog, usage: usage() });
   if (r === "/poll") { const since = Number(url.searchParams.get("since")); return send(res, 200, { ok: true, rev, changed: since !== rev }); }
   const b = m === "GET" ? {} : await body(req);
   if (r === "/command") {
     if (role === "device" && !actor) return send(res, 403, { ok: false, code: "azl_needs_pin", error: "Sign in with your PIN first." });
+    const why = refusal(b, whoOf(role, actor));
+    if (why) return send(res, 200, { ok: false, error: why });
     return send(res, 200, apply(b, actor ?? "s-maria")); // an owner or manager's own account acts as the head desk officer in this mock
   }
   if (r === "/pin/sign-in") return /^\d{4}$/.test(b.pin) && b.pin !== "0000" ? send(res, 200, { ok: true, token: `tok-${b.staffId}`, expiresAt: Date.now() + 12 * 3600_000, staff: { id: b.staffId } }) : send(res, 200, { ok: false, error: "That name and PIN do not match." });
