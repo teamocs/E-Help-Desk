@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(here, '..', '..');
-export const OUT = join(here, '..', 'shots');
+export const OUT = process.env.SHOTS_OUT ?? join(here, '..', 'shots');
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* ---------- mock server ---------- */
@@ -59,7 +59,12 @@ function findInPage(spec) {
     if (!root) return null;
   }
   let list = [];
-  if (spec.css) list = [...root.querySelectorAll(spec.css)].filter(vis);
+  if (spec.field) {
+    // A form box found by its label text (the desk's boxes have generated ids).
+    const f = spec.field.toLowerCase();
+    const ls = [...root.querySelectorAll('label')].filter((e) => vis(e) && norm(e.textContent).replace(/\s*\*$/, '').toLowerCase().startsWith(f));
+    list = ls.map((l) => (l.htmlFor ? document.getElementById(l.htmlFor) : l.querySelector('input,select,textarea'))).filter((e) => e && vis(e));
+  } else if (spec.css) list = [...root.querySelectorAll(spec.css)].filter(vis);
   else if (spec.btn) {
     const t = spec.btn.toLowerCase();
     const all = [...root.querySelectorAll('button,a,[role=radio],[role=switch],label,summary,select,input,textarea')].filter(vis);
@@ -88,6 +93,7 @@ export async function locate(page, spec) {
 export const C = (label, spec, extra = {}) => ({ label, ...spec, action: 'click', ...extra });
 export const L = (label, spec) => ({ label, ...spec, action: 'look' });
 export const T = (label, spec, typed) => ({ label, ...spec, action: 'type', typed });
+export const D = (label, spec, setValue, typed = setValue) => ({ label, ...spec, action: 'type', setValue, typed });
 export const digits = (s, pad) => [...s].map((d) => C(`Tap ${d} on the number pad`, { btn: d, within: pad }));
 
 /* ---------- state ---------- */
@@ -143,18 +149,34 @@ export async function act(page, t) {
   if (t.action === 'look') return;
   const el = await locate(page, t);
   if (t.keys) { await el.focus(); for (const k of t.keys) await page.keyboard.press(k); return; }
-  if (t.value !== undefined) { await el.select(t.value); return; }
+  if (t.value !== undefined) {
+    // A drop-down: the value may be given as the option's own value or as the words shown.
+    const v = await el.evaluate((e, want) => { const o = [...e.options].find((x) => x.value === want) ?? [...e.options].find((x) => x.textContent.trim().toLowerCase().startsWith(want.toLowerCase())); return o ? o.value : want; }, t.value);
+    await el.select(v); await sleep(200); return;
+  }
+  if (t.setValue !== undefined) {
+    // Date and time boxes: set the value the way React expects.
+    await el.evaluate((e, v) => { const set = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e), 'value').set; set.call(e, v); e.dispatchEvent(new Event('input', { bubbles: true })); e.dispatchEvent(new Event('change', { bubbles: true })); }, t.setValue);
+    await sleep(200); return;
+  }
   for (let i = 0; i < (t.repeat ?? 1); i++) { try { await el.click(); } catch { await el.evaluate((e) => e.click()); } if (t.repeat) await sleep(120); }
   if (t.action === 'type') {
     await page.keyboard.down('Control'); await page.keyboard.press('a'); await page.keyboard.up('Control');
-    await page.keyboard.type(t.typed, { delay: 12 });
+    if (t.typed === '') await page.keyboard.press('Backspace'); else await page.keyboard.type(t.typed, { delay: 12 });
   }
   await sleep(350);
 }
 
-export async function scrollTo(page, spec, block = 'center') {
+export async function scrollTo(page, spec, block = 'center', inline = 'nearest') {
   const el = await locate(page, spec);
-  await el.evaluate((e, b) => e.scrollIntoView({ block: b }), block);
+  // 'top' is 'start' with a little air above, so a heading is not squeezed against the edge.
+  await el.evaluate((e, b, inl) => {
+    e.scrollIntoView({ block: b === 'top' ? 'start' : b, inline: inl });
+    if (b !== 'top') return;
+    let p = e.parentElement;
+    while (p && !(p.scrollHeight > p.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(p).overflowY))) p = p.parentElement;
+    (p ?? document.scrollingElement).scrollTop -= 28;
+  }, block, inline);
 }
 
 const slug = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -167,7 +189,7 @@ export async function shot(c, o) {
   const { page } = c;
   state.current = `${c.vp}:${o.slug}`;
   if (o.prep) await o.prep(page, c);
-  if (o.scroll) await scrollTo(page, o.scroll.spec ?? o.scroll, o.scroll.block);
+  if (o.scroll) await scrollTo(page, o.scroll.spec ?? o.scroll, o.scroll.block, o.scroll.inline);
   await page.evaluate((hide) => {
     if (!document.getElementById('__shotstyle')) {
       const s = document.createElement('style'); s.id = '__shotstyle';

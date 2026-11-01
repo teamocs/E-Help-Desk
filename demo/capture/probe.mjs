@@ -1,10 +1,16 @@
-import { launch, startMock, newPage, steps, C, digits } from './lib.mjs';
+// Dev helper: prints what is on screen for a module. node capture/probe.mjs <role> <module label> [vp]
+import { launch, startMock, newPage, steps, C, sleep } from './lib.mjs';
+const [role = 'owner', mod = 'Dashboard', vp = 'desktop', extra = ''] = process.argv.slice(2);
 const b = await launch(); const m = await startMock();
-const c = await newPage(b, { vp: 'desktop', url: `${m.base}/helpdesk/?role=owner&hotel=baguio` });
-await steps(c.page, [C('n', { btn: 'New request', within: '.side' })]);
-await new Promise((r) => setTimeout(r, 800));
+const c = await newPage(b, { vp, url: `${m.base}/helpdesk/?role=${role}&hotel=baguio${extra}` });
+if (mod !== 'Dashboard') await steps(c.page, [C('n', { btn: mod, within: vp === 'phone' ? '.tabbar' : '.side' })]);
+await sleep(800);
+await c.page.screenshot({ path: process.env.PROBE_OUT ?? 'probe.png' });
 console.log(await c.page.evaluate(() => {
-  const q = (s) => document.querySelector(s); const info = (e) => { const s = getComputedStyle(e); const r = e.getBoundingClientRect(); return `${e.className} pos=${s.position} ov=${s.overflowY} top=${Math.round(r.top)} h=${Math.round(r.height)} sh=${e.scrollHeight} ch=${e.clientHeight}`; };
-  return [info(q('.sheet')), info(q('.sheet-body')), info(document.documentElement), info(document.body), info(q('.main')), info(q('.screen')), String(window.scrollY)].join('\n');
+  const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const t = (e) => (e.getAttribute('aria-label') || e.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 50);
+  const btns = [...document.querySelectorAll('button,a,[role=tab],[role=radio],select,input,textarea,summary')].filter(vis).map((e) => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${String(e.className).split(' ')[0]}: ${t(e)}`);
+  const heads = [...document.querySelectorAll('h1,h2,h3,.group-title,.card-title')].filter(vis).map((e) => `${e.tagName}.${String(e.className).split(' ')[0]}: ${t(e)}`);
+  return 'HEADS\n' + heads.join('\n') + '\nBTNS\n' + btns.join('\n');
 }));
 await b.close(); m.kill();

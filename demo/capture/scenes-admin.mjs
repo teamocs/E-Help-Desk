@@ -1,94 +1,114 @@
-// Chapters K (settings and staff), L (logins), M (lists) and O (offline) on the owner desk.
-import { add, main, side, newRequest, ROOM } from './chapters.mjs';
-import { sheet, NEEDS } from './scenes-desk.mjs';
+// Chapters R (Reports) and S (Configuration) on the owner desk.
+import { add, main, side, scr, goTo } from './chapters.mjs';
+import { sheet } from './scenes-desk.mjs';
 
-const title = (t) => ({ css: '.group-title', has: t });
-const label = (nth) => ({ css: '.le-item input[id$="-label"]', nth });
+const form = (name) => ({ field: name, within: '.sheet' });
+const tile = (name) => ({ css: '.rp-tile', has: name });
 
-add('K', async (env) => {
+/* ---------- R. REPORTS ---------- */
+add('R', async (env) => {
+  const { shot, chapter, C, L } = env;
+  const c = await main(env);
+  chapter('R', 'Reports', 'owner', 'Six reports about the hotel’s service, with a date range and a CSV file to download. They describe the work, never a ranking of people.');
+  // Each report is opened from the list; the way back is the All reports button.
+  const open = (name) => async (p) => {
+    try { await env.steps(p, [C('All reports', scr('All reports'))]); } catch { /* already on the list */ }
+    await env.steps(p, [C(`Open ${name}`, tile(name))]);
+  };
+  await shot(c, {
+    slug: 'reports-home', title: 'The Reports page', say: 'The top shows today at a glance. Below it are six reports. Supervisors can read them, and only the owner and managers change settings elsewhere.', prep: goTo(env, 'Reports'),
+    targets: [L('Today at a glance', { css: '.rp-h2', has: 'Today at a glance', words: true }), L('Counts for the shift', { text: 'Tickets logged this shift', words: true }), L('By department', { text: 'By department, the items', words: true })],
+  });
+  await shot(c, {
+    slug: 'reports-list', title: 'The six reports', say: 'Tap a report to open it. Each one has its own filters and a Download CSV button that opens in Excel.', scroll: { spec: tile('Response Time'), block: 'center' },
+    targets: [L('The six reports', tile('KPI Dashboard')), C('Response Time report', tile('Response Time'))],
+  });
+  await shot(c, {
+    slug: 'report-response-time', title: 'Response time report', say: 'How fast requests were relayed and completed, by request type and department. The range can be today, seven days, thirty days or this month.',
+    targets: [L('Date range', { css: '.chip', has: '7 days' }), L('Department and type filters', { field: 'Department', within: '.screen' }), L('Download as a CSV file', scr('Download CSV')), L('Totals for the period', { text: 'Items logged', words: true }), C('30 days', scr('30 days'))],
+  });
+  await shot(c, {
+    slug: 'report-response-time-30', title: 'A longer range', say: 'Pick another range and the table follows. Tap a column heading to sort by it.', targets: [L('Totals for the period', { text: 'Items logged', words: true }), L('Time to relay', { text: 'Time to relay', words: true }), C('Back to all reports', scr('All reports'))],
+  });
+  await shot(c, { slug: 'report-kpi', title: 'KPI dashboard', say: 'The key figures for the period next to the period before, with the change. Show the numbers gives the same figures as plain text.', prep: open('KPI Dashboard'), targets: [L('Compared with the period before', { text: 'Compared with the 30 days before', words: true }), L('Tickets logged', { text: 'Tickets logged', words: true }), C('Back to all reports', scr('All reports'))] });
+  await shot(c, { slug: 'report-turnaround', title: 'Room turnaround report', say: 'How long it takes from checkout to a clean room, by room type or by room attendant’s team.', prep: open('Room Turnaround'), targets: [L('Date range', { css: '.chip', has: '7 days' }), L('Rooms cleaned', { text: 'Rooms cleaned', words: true }), L('Checkout to clean room', { text: 'Checkout to clean room', words: true }), C('Back to all reports', scr('All reports'))] });
+  await shot(c, { slug: 'report-work-orders', title: 'Work order summary', say: 'Work orders by status, priority and department, with the estimated and the real cost side by side.', prep: open('WO Summary'), targets: [L('Date range', { css: '.chip', has: '7 days' }), L('Work orders reported', { text: 'Work orders reported', words: true }), L('By status', { text: 'By status', words: true }), C('Back to all reports', scr('All reports'))] });
+  await shot(c, { slug: 'report-inquiries', title: 'Inquiry volume report', say: 'How many inquiries came in each day and hour, and from whom: in-house guests, external callers and checked-out guests.', prep: open('Inquiry Volume'), targets: [L('Date range', { css: '.chip', has: '7 days' }), L('Inquiries per day', { text: 'Inquiries per day', words: true }), L('Inquiries by hour', { text: 'Inquiries by hour of the day', words: true }), C('Back to all reports', scr('All reports'))] });
+  await shot(c, { slug: 'report-crisis', title: 'Crisis log report', say: 'Crisis cases by code and place, and how long each took to close. Use it to see where trouble repeats.', prep: open('Crisis Log'), targets: [L('Date range', { css: '.chip', has: '7 days' }), L('Cases by code', { text: 'By code', words: true }), L('Download as a CSV file', scr('Download CSV')), side(env, 'Configuration')] });
+});
+
+/* ---------- S. CONFIGURATION ---------- */
+const SECTIONS = [
+  // [link, heading id, slug, title, say]
+  ['Departments & Staff', 'cfg-departments-h', 'departments', 'Departments', 'Each department has a name, a short badge and a mark if it handles repairs. Departments that handle repairs get the work orders.'],
+  ['Service Items', 'cfg-requestTypes-h', 'service-items', 'Service items', 'The service items are the choices in the New request form, grouped by department, each with its own target time.'],
+  ['Crisis Codes', 'cfg-crisisCodes-h', 'crisis-codes', 'Crisis codes', 'The radio codes offered when a crisis case is logged, for example 10-9 for a medical emergency.'],
+  ['Vehicles', 'cfg-vehicles-h', 'vehicles', 'Vehicles', 'The cars and vans that trips are logged for. They appear in the Log Trip form.'],
+  ['Areas', 'cfg-woAreas-h', 'areas', 'Areas', 'Where a work order is: a room, a public area, the staff house and so on.'],
+  ['Cleaning Types', 'cfg-cleaningTypes-h', 'cleaning-types', 'Cleaning types', 'The kinds of clean a room attendant can log, such as Regular or Checkout.'],
+  ['Complaint Categories', 'cfg-complaintCategories-h', 'complaint-categories', 'Complaint categories', 'What a guest complaint is about, used when a complaint is logged as a crisis case.'],
+  ['Crisis Locations', 'cfg-crisisLocations-h', 'crisis-locations', 'Crisis locations', 'The places in the hotel that can be chosen for a crisis case, such as the lobby or the pool.'],
+  ['Involved Types', 'cfg-involvedTypes-h', 'involved-types', 'Who was involved', 'The kinds of people who can be involved in a crisis case, such as an in-house guest or a visitor.'],
+  ['Job Titles', 'cfg-jobTitles-h', 'job-titles', 'Job titles', 'Job titles are suggested when a person is added to the staff list.'],
+  ['Hold Reasons', 'cfg-holdReasons-h', 'hold-reasons', 'Hold reasons', 'The reasons offered when a request has to wait. Putting a request on hold stops its timer.'],
+  ['Bundles', 'cfg-bundles-h', 'bundles', 'Bundles', 'A bundle creates several jobs at once, for example a leak that needs Engineering first and then Housekeeping.'],
+  ['Work-Order Findings', 'cfg-woFindings-h', 'work-order-findings', 'Work order findings', 'Quick answers offered when someone assesses a work order.'],
+  ['Help-Desk Staff', 'cfg-hdo-h', 'help-desk-staff', 'Help-desk staff', 'The people at the help desk who log requests. Each has a four-digit PIN for a shared phone.'],
+  ['Staff (PINs)', 'cfg-staff-h', 'staff-pins', 'Staff and their PINs', 'Everyone who signs in on a shared phone with a four-digit PIN. A manager can set a new PIN or remove a person.'],
+  ['Logins', 'cfg-logins-h', 'logins', 'Logins', 'Only the hotel owner decides who can sign in with an email and password, and can switch a login off.'],
+  ['Display', 'cfg-display-h', 'display', 'Display options', 'Make the text bigger, increase the contrast or reduce movement. The choice is only for this device.'],
+  ['Feel', 'cfg-feel-h', 'feel', 'Vibration and sounds', 'Choose whether the phone vibrates, whether alerts make a sound and whether keyboard shortcuts work.'],
+];
+
+
+add('S', async (env) => {
   const { shot, chapter, C, L, T } = env;
   const c = await main(env);
-  chapter('K', 'Settings and staff', 'owner', 'Text size, contrast and sounds, and the list of staff who sign in with a PIN.');
+  chapter('S', 'Configuration', 'owner', 'Where the hotel sets itself up: its name, departments, the choices in every form, the staff and their PINs, the logins and how the screen looks.');
+  const link = (name) => ({ btn: name, within: '.screen' });
+  const goNext = (i) => (SECTIONS[i + 1] ? [C(`Open ${SECTIONS[i + 1][3]}`, link(SECTIONS[i + 1][0]))] : []);
   await shot(c, {
-    slug: 'settings-staff', title: 'Staff who use a PIN', say: 'Staff sign in on a shared phone with a four-digit PIN. A manager can set a new PIN or remove a person here.',
-    targets: [L('Staff list', { ...title('Staff'), words: true }), L('Remove a person', { btn: 'Remove Joel Dizon' }), C('Set a new PIN', { btn: 'Set a new PIN for Joel Dizon' })],
+    slug: 'config-profile', title: 'Hotel profile', say: 'Configuration has a list of sections on the left. The hotel profile holds its name, contact details and address. The time zone is fixed to Philippine time.', prep: goTo(env, 'Configuration'),
+    targets: [L('Hotel name', { css: '#pf-name' }), L('Contact', { css: '#pf-contact' }), C('Departments section', link('Departments & Staff'))],
   });
-  await shot(c, { slug: 'settings-set-pin', title: 'Set a new PIN', say: 'Type four digits and tap Save. The PIN is never shown again, so write down a new one if it is forgotten.', targets: [T('New PIN', { btn: 'New PIN for Joel Dizon' }, '4821'), L('Save the PIN', { btn: 'Save', within: { css: '.row', has: 'Joel Dizon' } })] });
-  await shot(c, {
-    slug: 'settings-add-person', title: 'Add a person', say: 'To add someone, type their name, pick a job title, a role and a department, and give them a four-digit PIN.',
-    scroll: { spec: { css: '#st-role' }, block: 'center' },
-    targets: [T('Full name', { css: '#st-name' }, 'Dennis Lim'), T('Job title', { css: '#st-title' }, 'Night Engineer'), C('Department', { css: '#st-dept', value: 'engineering' }), T('Four-digit PIN', { css: '#st-pin' }, '4821'), L('Add person button', { btn: 'Add person' })],
-  });
-  await shot(c, {
-    slug: 'settings-display', title: 'Text size and contrast', say: 'Make the text bigger, increase the contrast or reduce movement so the screen is comfortable to read, even at 3 a.m.',
-    scroll: { spec: title('Display'), block: 'start' },
-    targets: [L('Reduce motion', { btn: 'Reduce motion' }), L('Higher contrast', { btn: 'Increase contrast' }), C('Larger text', { css: '#ts', keys: ['ArrowRight', 'ArrowRight'] })],
-  });
-  await shot(c, { slug: 'settings-text-larger', title: 'Larger text', say: 'Everything on the screen is now larger. The change is only for this device.', scroll: { spec: title('Display'), block: 'start' }, targets: [C('Higher contrast', { btn: 'Increase contrast' })] });
-  await shot(c, {
-    slug: 'settings-contrast', title: 'Higher contrast', say: 'Higher contrast makes text and lines stronger. Switch it off again the same way.', scroll: { spec: title('Display'), block: 'start' },
-    targets: [C('Contrast off', { btn: 'Increase contrast' }), C('Normal text size', { css: '#ts', keys: ['ArrowLeft', 'ArrowLeft'] })],
-  });
-  await shot(c, { slug: 'settings-feel', title: 'Vibration and sounds', say: 'Choose whether the phone vibrates and whether safety alerts make a sound. Keyboard shortcuts can be turned off too.', scroll: { spec: title('Feel'), block: 'start' }, targets: [L('Vibration', { btn: 'Vibration' }), L('Sounds', { btn: 'Sounds' }), L('Keyboard shortcuts', { btn: 'Keyboard shortcuts' })] });
-});
-
-add('L', async (env) => {
-  const { shot, chapter, C, L, T } = env;
-  const c = await main(env);
-  chapter('L', 'Logins for managers', 'owner', 'Only the hotel owner decides who can sign in with an email address, and can switch a login off.');
-  await shot(c, { slug: 'logins-list', title: 'People who sign in with email', say: 'The owner sees everyone who signs in with an email: managers, supervisors and shared phones.', scroll: { spec: title('Logins'), block: 'start' }, targets: [L('The logins list', { css: '.group-title', has: 'Logins', words: true }), C('Switch off a login', { btn: 'Switch off Ana Villanueva' })] });
-  await shot(c, { slug: 'logins-switched-off', title: 'A login switched off', say: 'A switched-off person is signed out everywhere and cannot sign in until the owner switches them on again.', scroll: { spec: title('Logins'), block: 'start' }, targets: [L('Switched off label', { css: '.pill.warn', has: 'Switched off' }), C('Switch it on again', { btn: 'Switch on Ana Villanueva' })] });
-  await shot(c, {
-    slug: 'logins-add', title: 'Add a login', say: 'To give someone a login, type their name and email and choose their role. They get an email to set their own password.',
-    scroll: { spec: { css: '#lg-email' }, block: 'center' },
-    targets: [T('Name', { css: '#lg-name' }, 'Liza Abad'), T('Email', { css: '#lg-email' }, 'liza.abad@example.test'), C('Role', { css: '#lg-role', value: 'supervisor' }), C('Add login', { btn: 'Add login', within: 'form' })],
-  });
-  await shot(c, { slug: 'logins-added', title: 'The new login is listed', say: 'The new person appears in the list and is emailed a link to choose a password.', keepToast: true, scroll: { spec: title('Logins'), block: 'start' }, targets: [L('The new login', { css: '.row', has: 'Liza Abad' })] });
-});
-
-const openList = (env, name) => env.C(`Open ${name}`, { btn: name });
-const closeSheet = (env) => env.C('Close the list', sheet('Close'));
-
-add('M', async (env) => {
-  const { shot, chapter, C, L, T, steps } = env;
-  const c = await main(env);
-  chapter('M', 'Your own lists', 'owner', 'The hotel chooses its own departments, request types, bundles, hold reasons, job titles and repair findings.');
-  await shot(c, { slug: 'lists-overview', title: 'The hotel’s own lists', say: 'Six lists let the hotel decide its own wording. Changes reach every phone within a few seconds.', scroll: { spec: title('Lists'), block: 'start' }, targets: [L('Lists section', { ...title('Lists'), words: true }), openList(env, 'Departments')] });
-  await shot(c, { slug: 'lists-departments', title: 'Departments', say: 'Each department has a name, a short badge and a choice for whether it handles repairs. A note shows how much it is used.', targets: [L('Badge shown in lists', { css: '.le-item input[id$="-short"]', nth: 0 }), L('Handles repairs', { css: '.le-check', nth: 1 }), L('How much it is used', { text: 'In use:', within: '.sheet' }), C('Add a department', sheet('Add department'))] });
-  await shot(c, { slug: 'lists-department-new', title: 'A new department', say: 'Type the name of the new department, for example Spa.', scroll: { spec: { css: '.le-item', nth: -1, within: '.sheet' }, block: 'center' }, targets: [T('Department name', label(-1), 'Spa')] });
-  await shot(c, { slug: 'lists-department-ready', title: 'Save the department', say: 'A short badge is filled in for you. Save the changes to make the department available everywhere.', prep: (p) => steps(p, [C('Blur', { css: '.sheet h2' })]), scroll: { spec: { css: '.le-item', nth: -1, within: '.sheet' }, block: 'center' }, targets: [L('Badge', { css: '.le-item input[id$="-short"]', nth: -1 }), C('Save changes', sheet('Save changes'))] });
-  await shot(c, { slug: 'lists-department-saved', title: 'Department saved', say: 'A message confirms the list was saved and the button says Saved.', keepToast: true, targets: [L('Saved message', { css: '.toast' }), C('Try to delete Housekeeping', sheet('Delete Housekeeping'))] });
-  await shot(c, { slug: 'lists-in-use-refusal', title: 'A used department cannot be deleted', say: 'A department that people or requests still use cannot be deleted. The message suggests archiving it instead.', scroll: { spec: { css: '.le-item', nth: 0, within: '.sheet' }, block: 'start' }, targets: [L('Why it cannot be deleted', { css: '.le-error' }), C('Archive Housekeeping', sheet('Archive Housekeeping'))] });
-  await shot(c, { slug: 'lists-department-archived', title: 'Archived instead', say: 'An archived department is hidden from new work but keeps its name on old requests. It can be restored at any time.', targets: [L('Archived label', { css: '.pill.warn', has: 'Archived' }), closeSheet(env)] });
-  await shot(c, { slug: 'lists-request-types-open', title: 'Request types', say: 'Request types are the buttons receptionists tap. Each has a department, a target time in minutes and an icon.', prep: (p) => steps(p, [openList(env, 'Request types')]), targets: [L('Department and target time', { css: '.le-grid', nth: 0 }), L('Icon of the request', { css: '.le-icon-line', nth: 0 }), C('Add a request type', sheet('Add request type'))] });
-  await shot(c, {
-    slug: 'lists-request-type-new', title: 'A new request type', say: 'Name the request, choose the Spa department and the target time. Then choose an icon.', scroll: { spec: { css: '.le-item', nth: -1, within: '.sheet' }, block: 'start' },
-    targets: [T('Request name', label(-1), 'Massage booking'), C('Department', { css: '.le-item select[id$="-dept"]', nth: -1, value: 'spa' }), T('Target in minutes', { css: '.le-item input[id$="-sla"]', nth: -1 }, '60'), C('Change the icon', { css: '.le-icon-line button', nth: -1 })],
-  });
-  await shot(c, { slug: 'lists-icon-picker', title: 'Pick an icon', say: 'Tap the picture that fits the request. Here the Spa icon.', scroll: { spec: { css: '.icon-grid' }, block: 'center' }, targets: [C('Spa icon', { css: '.icon-opt', has: 'Spa' })] });
-  await shot(c, { slug: 'lists-request-type-ready', title: 'Save the request type', say: 'The icon is chosen. Save to add Massage booking to the New request screen.', scroll: { spec: sheet('Save changes'), block: 'end' }, targets: [C('Save changes', sheet('Save changes'))] });
-  await shot(c, { slug: 'lists-request-type-saved', title: 'Request type saved', say: 'The new request type is saved for every phone.', keepToast: true, targets: [L('Saved message', { css: '.toast' }), closeSheet(env)] });
-  await shot(c, { slug: 'new-request-with-spa', title: 'The new button is there', say: 'Back on the New request screen, Massage booking is now one of the buttons.', prep: (p) => steps(p, [newRequest(env)]), scroll: { spec: sheet('Massage booking'), block: 'center' }, targets: [L('Massage booking button', sheet('Massage booking'))] });
-  await shot(c, { slug: 'lists-bundles', title: 'Bundles with steps', say: 'A bundle creates several jobs at once. Each step names its department and a later step can wait for an earlier one.', prep: (p) => steps(p, [C('Close', sheet('Close')), openList(env, 'Bundles')]), targets: [L('Steps of the bundle', { css: '.le-steps' }), L('Waits for the step before', { text: 'Starts after step 1 is done', within: '.sheet' }), C('Add a step', sheet('Add a step'))] });
-  await shot(c, { slug: 'lists-hold-reasons', title: 'Reasons to put on hold', say: 'These are the reasons shown when a request has to wait. A note shows which ones are in use right now.', prep: (p) => steps(p, [closeSheet(env), openList(env, 'Hold reasons')]), targets: [L('In use right now', { text: 'In use:', within: '.sheet' }), closeSheet(env)] });
-  await shot(c, { slug: 'lists-job-titles', title: 'Job titles', say: 'Job titles are suggested when a person is added to the staff list.', prep: (p) => steps(p, [openList(env, 'Job titles')]), targets: [L('The job titles', { css: '.le-list' }), closeSheet(env)] });
-  await shot(c, { slug: 'lists-repair-findings', title: 'Repair findings', say: 'These quick answers appear when someone assesses a repair job.', prep: (p) => steps(p, [openList(env, 'Work-order findings')]), targets: [L('The findings', { css: '.le-list' }), closeSheet(env)] });
-});
-
-add('O', async (env) => {
-  const { shot, chapter, C, L, digits, steps, state } = env;
-  const c = await main(env);
-  const { page } = c;
-  chapter('O', 'No internet', 'owner', 'When the connection drops, the desk keeps working and sends everything when it is back.');
-  await shot(c, {
-    slug: 'offline-new-request', title: 'Logging with no internet', say: 'Even with the internet cut, a request can still be logged. The desk keeps it safe on the phone.',
-    prep: async (p) => { await steps(p, [side(env, 'Requests'), newRequest(env)]); await env.sleep(500); await steps(p, [...digits('521', ROOM)]); await steps(p, [C('Extra pillow', sheet('Extra pillow'))]); state.mute = true; await page.setOfflineMode(true); await env.sleep(800); },
-    scroll: { spec: sheet('Log request'), block: 'end' }, targets: [C('Log request', sheet('Log request'))],
-  });
-  await shot(c, { slug: 'offline-queued', title: 'Saved, waiting to send', say: 'The chip says Offline and how many changes are waiting. The request shows a small cloud mark until it is sent.', keepToast: true, targets: [L('Offline chip with waiting count', { css: '.conn' }), L('Request waiting to send', { css: '.ticket', has: '521' })] });
-  await shot(c, {
-    slug: 'offline-back-online', title: 'Back online, all sent', say: 'When the connection returns the waiting requests are sent by themselves and the chip says Online again.',
-    prep: async () => { await page.setOfflineMode(false); await page.waitForFunction(() => /Online/.test(document.querySelector('.conn')?.textContent ?? ''), { timeout: 20000 }); await env.sleep(800); state.mute = false; },
-    targets: [L('Online again', { css: '.conn' }), L('Request now sent', { css: '.ticket', has: '521' })],
-  });
+  for (let i = 0; i < SECTIONS.length; i++) {
+    const [, hid, slug, title, say] = SECTIONS[i];
+    const head = L(title, { css: `#${hid}`, words: true });
+    if (slug === 'vehicles') {
+      await shot(c, { slug: 'config-vehicles', title, say, targets: [head, C('Edit Vehicles', link('Edit Vehicles'))] });
+      await shot(c, {
+        slug: 'config-vehicles-edit', title: 'Edit the vehicles', say: 'Edit opens the list. Add a vehicle, rename one, move it up or down, or archive it so it stays on old trips but is not offered again.',
+        targets: [L('Existing vehicles', { css: '.sheet .le-item', nth: 0 }), C('Add vehicle', sheet('Add vehicle'))],
+      });
+      await shot(c, {
+        slug: 'config-vehicles-new', title: 'Name the new vehicle', say: 'Type the name of the new vehicle, for example Van 3, then save.',
+        scroll: { spec: { css: '.le-item input[id$="-label"]', nth: -1, within: '.sheet' }, block: 'center' }, targets: [T('Vehicle name', { css: '.le-item input[id$="-label"]', nth: -1 }, 'Van 3'), C('Save changes', sheet('Save changes'))],
+      });
+      await shot(c, { slug: 'config-vehicles-saved', title: 'Vehicle saved', say: 'A message confirms the list was saved. Van 3 is now in the Log Trip form on every device.', keepToast: true, targets: [L('Saved message', { css: '.toast' }), C('Close', sheet('Close'))] });
+      await env.steps(c.page, goNext(i));
+    } else if (slug === 'staff-pins') {
+      await shot(c, { slug: 'config-staff-pins', title, say, targets: [head, L('Remove a person', { btn: 'Remove Joel Dizon' }), C('Set a new PIN', { btn: 'Set a new PIN for Joel Dizon' })] });
+      await shot(c, { slug: 'config-set-pin', title: 'Set a new PIN', say: 'Type four digits and tap Save. The PIN is never shown again, so write down a new one if it is forgotten.', targets: [T('New PIN', { btn: 'New PIN for Joel Dizon' }, '4821'), L('Save the PIN', { btn: 'Save', within: { css: '.row', has: 'Joel Dizon' } })] });
+      await shot(c, {
+        slug: 'config-add-person', title: 'Add a person', say: 'To add someone, type their name, pick a job title, a role and a department, and give them a four-digit PIN.',
+        scroll: { spec: { css: '#st-role' }, block: 'center' }, targets: [T('Full name', { css: '#st-name' }, 'Dennis Lim'), T('Job title', { css: '#st-title' }, 'Night Engineer'), C('Department', { css: '#st-dept', value: 'engineering' }), T('Four-digit PIN', { css: '#st-pin' }, '4821'), L('Add person button', { btn: 'Add person' })],
+      });
+      await env.steps(c.page, goNext(i));
+    } else if (slug === 'logins') {
+      await shot(c, { slug: 'config-logins', title, say, targets: [head, C('Switch off a login', { btn: 'Switch off Ana Villanueva' })] });
+      await shot(c, { slug: 'config-logins-off', title: 'A login switched off', say: 'A switched-off person is signed out everywhere and cannot sign in until the owner switches them on again.', targets: [L('Switched off label', { css: '.pill.warn', has: 'Switched off' }), C('Switch it on again', { btn: 'Switch on Ana Villanueva' })] });
+      await shot(c, {
+        slug: 'config-logins-add', title: 'Add a login', say: 'To give someone a login, type their name and email and choose their role. They get an email to set their own password.',
+        scroll: { spec: { css: '#lg-email' }, block: 'center' }, targets: [T('Name', { css: '#lg-name' }, 'Ben Torres'), T('Email', { css: '#lg-email' }, 'ben.torres@example.test'), C('Role', { css: '#lg-role', value: 'supervisor' }), C('Add login', { btn: 'Add login', within: 'form' })],
+      });
+      await shot(c, { slug: 'config-logins-added', title: 'The new login is listed', say: 'The new person appears in the list and is emailed a link to choose a password.', keepToast: true, scroll: { spec: { css: '.row', has: 'ben.torres@example.test' }, block: 'center' }, targets: [L('The new login', { css: '.row', has: 'ben.torres@example.test' })] });
+      await env.steps(c.page, goNext(i));
+    } else if (slug === 'display') {
+      await shot(c, { slug: 'config-display', title, say, targets: [head, L('Reduce motion', { btn: 'Reduce motion' }), L('Higher contrast', { btn: 'Increase contrast' }), C('Larger text', { css: '#ts', keys: ['ArrowRight', 'ArrowRight'] })] });
+      await shot(c, { slug: 'config-display-larger', title: 'Larger text', say: 'Everything on the screen is now larger. The change is only for this device, and the slider puts it back.', scroll: { spec: { css: '#ts' }, block: 'center' }, targets: [C('Normal text size', { css: '#ts', keys: ['ArrowLeft', 'ArrowLeft'] })] });
+      await env.steps(c.page, goNext(i));
+    } else {
+      await shot(c, { slug: `config-${slug}`, title, say, targets: [head, ...goNext(i)] });
+    }
+  }
 });

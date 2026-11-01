@@ -1,0 +1,43 @@
+// Chapter PH: the same desk on a phone (owner), module by module where the phone looks different.
+import { add, deskUrl } from './chapters.mjs';
+import { sheet } from './scenes-desk.mjs';
+
+const form = (name) => ({ field: name, within: '.sheet' });
+
+add('PH', async (env) => {
+  const { shot, chapter, C, L, T, steps } = env;
+  const c = await env.newPage(env.browser, { vp: 'phone', url: deskUrl(env), role: 'owner', hotel: 'baguio' });
+  chapter('PH', 'On a phone', 'owner', 'The same desk fits a phone: four tabs at the bottom, a More sheet for the other areas and a big New request button.');
+  const tab = (name) => C(`Open ${name}`, { btn: name, within: '.tabbar' });
+  /** Open an area that lives under More (the phone bar only has four tabs). */
+  const viaMore = (name) => async (p) => { await steps(p, [tab('More')]); await env.sleep(400); await steps(p, [C(`Open ${name}`, sheet(name))]); await env.sleep(400); };
+  const screen = (name) => ({ btn: name, within: '.screen' });
+
+  await shot(c, { slug: 'phone-dashboard', title: 'The Dashboard on a phone', say: 'On a phone the Dashboard is a column of cards. Four tabs sit at the bottom, and More holds the other areas.', targets: [L('Hotel name and logo', { css: '.topbar .brand' }), L('Connection shows Online', { css: '.topbar .conn' }), L('Quick buttons', screen('New Request')), L('Bottom tabs', { css: '.tabbar' }), tab('More')] });
+  await shot(c, { slug: 'phone-more', title: 'The More menu', say: 'The areas that are not tabs are under More: Inquiries, House Status, Crisis Mgmt, Transport, Reminders, Reports and Configuration. The paper forms are here too.', targets: [L('The other areas', sheet('Inquiries')), L('Number of open inquiries', { css: '.sheet .row', has: 'Inquiries' }), C('Paper forms', sheet('Paper kit'))] });
+  await shot(c, { slug: 'phone-paper-kit', title: 'Paper forms for emergencies', say: 'If power or battery fails, the desk shows the paper forms to use and how to enter them later.', targets: [L('Paper request log', { text: 'Request log', within: '.sheet' }), C('Close', sheet('Close'))] });
+  await shot(c, { slug: 'phone-requests', title: 'Requests on a phone', say: 'Each request is a card with its room, status and times. The buttons on the card do the next step.', prep: async (p) => { await env.sleep(500); await steps(p, [tab('Requests')]); }, targets: [L('A request card', { css: '.rq-card', nth: 0 }), L('New request button', { css: '.fab' }), C('Open a request', { css: '.rq-card-main', nth: 0 })] });
+  await shot(c, { slug: 'phone-request-detail', title: 'A request on a phone', say: 'Tap a card to see its steps. The big buttons do the next step: relay, on site, done or hold.', targets: [L('Next step button', sheet('Relay')), L('History', { css: '.sheet .rq-hist' }), C('Close', sheet('Close'))] });
+  await shot(c, { slug: 'phone-new-request', title: 'New request on a phone', say: 'The New request form fits the phone. Type the room, search for the item and tap Create request.', prep: async (p) => { await env.sleep(500); await steps(p, [C('New request', { css: '.fab' })]); }, targets: [T('Room number', form('Room'), '412'), L('Item box', form('Item'))] });
+  await shot(c, {
+    slug: 'phone-safety-warning', title: 'Safety warning on a phone', say: 'A worrying word in the remark shows a red warning before the request is sent.',
+    prep: async (p) => { await steps(p, [T('Remark box', form('Remarks'), 'may usok sa hallway')]); }, scroll: { spec: { css: '.sheet .banner.bad' }, block: 'center' }, targets: [L('Safety warning', { css: '.sheet .banner.bad' }), C('Raise safety alert', sheet('Raise safety alert'))],
+  });
+  await shot(c, { slug: 'phone-safety-alert', title: 'Safety alert on a phone', say: 'The alert fills the phone screen and says to call 911 or use the radio first.', targets: [L('What to do first', { css: '#sf-title', words: true }), C('I called 911 just now', { btn: 'I called 911 just now' }), C('Resolve with sign-off', { btn: 'Resolve with sign-off' })] });
+  await shot(c, { slug: 'phone-cleaning', title: 'Cleaning on a phone', say: 'Room attendants see their rooms and tap Clock In and Clock Out.', prep: async (p) => { await env.sleep(500); await steps(p, [tab('Cleaning')]); }, targets: [L('Status filters', { css: '.chip', has: 'Ready' }), L('A room', { css: '.screen tbody tr, .screen li', nth: 0 }), tab('Work Orders')] });
+  await shot(c, { slug: 'phone-work-orders', title: 'Work orders on a phone', say: 'Work orders have their own tab, with the same filters and the button for the next step.', targets: [L('Stage filters', { css: '.chip', has: 'Reported' }), L('A work order', { css: '.screen li, .screen tbody tr', nth: 0 }), L('Report a work order', screen('Report Work Order'))] });
+  await shot(c, { slug: 'phone-inquiries', title: 'Inquiries on a phone', say: 'Inquiries are cards with Note and Done buttons.', prep: viaMore('Inquiries'), targets: [L('Tabs', screen('Active')), L('An inquiry', { css: '.inq-main', nth: 0 }), L('New Inquiry', screen('New Inquiry'))] });
+  await shot(c, { slug: 'phone-house-status', title: 'House Status on a phone', say: 'Each log is a card with its updates and the buttons to add an update or close it.', prep: viaMore('House Status'), targets: [L('Filters', { css: '.chip', has: 'Not closed' }), L('A log', { css: '.t-head', nth: 0, words: true }), L('New Log', screen('New Log'))] });
+  await shot(c, { slug: 'phone-crisis', title: 'Crisis Mgmt on a phone', say: 'The call 911 notice is the first thing on the screen. Safety alerts and crisis cases follow, and Log a case is one tap away.', prep: viaMore('Crisis Mgmt'), targets: [L('Call 911 or radio first', { text: 'CALL 911 / RADIO FIRST', words: true }), L('Safety alerts', { css: '#alerts-title', words: true })] });
+  await shot(c, { slug: 'phone-crisis-cases', title: 'Crisis cases on a phone', say: 'Scroll down for the crisis cases. Each is a card, and Log a case is one tap away.', scroll: { spec: { css: '#cases-title' }, block: 'top' }, targets: [L('Log a case', screen('Log a case')), L('A crisis case', { css: '.cr-card', nth: 0 })] });
+  await shot(c, { slug: 'phone-transport', title: 'Transport on a phone', say: 'Trips are cards. Depart and Mark arrived are on the card.', prep: viaMore('Transport'), targets: [L('Filters', { css: '.chip', has: 'En Route' }), L('A trip', { css: '.tr-no, .tr-open', nth: 0 }), L('Log Trip', screen('Log Trip'))] });
+  await shot(c, { slug: 'phone-reminders', title: 'Reminders on a phone', say: 'Reminders are a short list with a Done button on each.', prep: viaMore('Reminders'), targets: [L('Tabs', screen('Pending')), L('A reminder', { css: '.screen li, .screen tr', nth: 0 }), L('New Reminder', screen('New Reminder'))] });
+  await shot(c, { slug: 'phone-reports', title: 'Reports on a phone', say: 'The reports open from the list, and the tables and charts fit the width of the phone.', prep: viaMore('Reports'), targets: [L('Today at a glance', { css: '.rp-h2', has: 'Today at a glance', words: true }), L('Counts for the shift', { text: 'Tickets logged this shift', words: true })] });
+  await shot(c, { slug: 'phone-report-open', title: 'A report on a phone', say: 'Open a report, choose a range, and scroll down for the figures. Download CSV gives the same figures as a file.', prep: async (p) => { await steps(p, [C('Response Time', { css: '.rp-tile', has: 'Response Time' })]); }, targets: [L('Date range', { css: '.chip', has: '7 days' }), L('Download as a CSV file', screen('Download CSV'))] });
+  await shot(c, { slug: 'phone-configuration', title: 'Configuration on a phone', say: 'Configuration lists its sections one under the other, each with a short line about what is in it. Tap a section to open it.', prep: viaMore('Configuration'), targets: [L('Who is signed in', screen('Switch person')), L('The sections', screen('Departments & Staff')), C('Open Vehicles', screen('Vehicles'))] });
+  await shot(c, { slug: 'phone-configuration-section', title: 'A section on a phone', say: 'A section opens as a short sheet that lists what is in it. Edit vehicles opens the same editor as on a computer.', targets: [L('The section', { css: '.sheet h2', words: true }), L('Edit the list', sheet('Edit vehicles')), C('Close', sheet('Close'))] });
+  await c.page.close();
+  const b = await env.newPage(env.browser, { vp: 'phone', url: deskUrl(env, { hotel: 'boracay' }), role: 'owner', hotel: 'boracay' });
+  await shot(b, { slug: 'phone-dashboard-boracay', title: 'The Boracay hotel on a phone', say: 'The Boracay hotel shows its own name, logo and teal colours.', targets: [L('Hotel name and logo', { css: '.topbar .brand' }), L('Bottom tabs', { css: '.tabbar' })] });
+  await b.page.close();
+});

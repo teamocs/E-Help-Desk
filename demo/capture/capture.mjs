@@ -2,15 +2,16 @@
 // Usage: npm run capture            (all chapters)
 //        npm run capture -- --only=B,C   (some chapters; later ones may need the earlier ones' data)
 import { rmSync, mkdirSync } from 'node:fs';
-import { OUT, launch, startMock, newPage, open, shot, chapter, state, writeManifest, C, L, T, digits, sleep, steps, act, scrollTo } from './lib.mjs';
+import { OUT, launch, startMock, newPage, open, shot, chapter, state, writeManifest, C, L, T, D, digits, sleep, steps, act, scrollTo } from './lib.mjs';
 import { chapters } from './chapters.mjs';
 import { check } from './check.mjs';
 import './scenes-desk.mjs';
-import './scenes-more.mjs';
+import './scenes-modules.mjs';
 import './scenes-admin.mjs';
+import './scenes-phone.mjs';
 import './scenes-roles.mjs';
 
-const ORDER = ['A', 'B', 'B2', 'PH', 'C', 'E', 'D', 'F', 'G', 'H', 'I', 'J', 'N', 'K', 'L', 'M', 'O', 'Q', 'P'];
+const ORDER = ['A', 'B', 'B2', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'K', 'L', 'M', 'R', 'S', 'PH', 'J', 'N', 'O', 'Q', 'P'];
 const plan = ORDER.map((id) => chapters.find((c) => c[0] === id)).filter(Boolean);
 
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7).split(',');
@@ -19,7 +20,7 @@ mkdirSync(OUT, { recursive: true });
 
 const browser = await launch();
 const mock = await startMock();
-const env = { browser, mock, sleep, steps, act, scrollTo, state, newPage, open, shot, chapter, C, L, T, digits, desks: {} };
+const env = { browser, mock, sleep, steps, act, scrollTo, state, newPage, open, shot, chapter, C, L, T, D, digits, desks: {} };
 console.log(`Mock desk at ${mock.base}`);
 
 try {

@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "mock-wp",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/mock-wp.mjs"],
+      "port": 8787
+    }
+  ]
+}

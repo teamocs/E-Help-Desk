@@ -1,4 +1,4 @@
-// The scenes. Each chapter is [id, async (env) => ...]; shots are listed in the order a viewer meets them.
+// The scenes (the 11-module desk). Each chapter is [id, async (env) => ...]; shots are listed in the order a viewer meets them.
 // A target is what the cursor touches AFTER the picture is taken (click / type) or points at (look), in order.
 // Wording: plain words for title and say; selectors use the desk's own button texts.
 
@@ -16,6 +16,10 @@ export async function main(env) {
 }
 export const side = (env, name, label) => env.C(label ?? `Open ${name}`, { btn: name, within: '.side' });
 export const newRequest = (env) => env.C('Start a new request', { btn: 'New request', within: '.side' });
+/** Things inside the screen on the right of the sidebar (not the sidebar itself). */
+export const scr = (name, extra = {}) => ({ btn: name, within: '.screen', ...extra });
+/** Go to a module from the sidebar, as a setup step with no picture. */
+export const goTo = (env, name) => (p) => env.steps(p, [side(env, name)]);
 
 export const chapters = [];
 export const add = (id, fn) => chapters.push([id, fn]);
@@ -72,18 +76,44 @@ add('A', async (env) => {
   if (await pb.go('/reset/')) await shot(pb.c, { slug: 'link-expired', title: 'Expired link on a phone', say: 'An old password link shows this page and offers a new one.', targets: [C('Request a new link', { btn: 'Request a new link' })], noact: true });
 });
 
-/* ---------- B. THE DESK ---------- */
+/* ---------- B. THE DASHBOARD ---------- */
 add('B', async (env) => {
   const { shot, chapter, C, L } = env;
   const c = await main(env);
-  chapter('B', 'The desk', 'owner', 'The home screen: every guest request still open, what is late, and whether the desk is online.');
+  chapter('B', 'The Dashboard', 'owner', 'The home screen: four quick buttons, the counts for every module, how fast the desk answers, the latest requests and the shift handover.');
   await shot(c, {
-    slug: 'requests-list', title: 'All open guest requests', say: 'This is the list of guest requests that are still open. Late ones and VIP guests are grouped at the top under Needs attention.',
-    targets: [L('Hotel name and logo', { css: '.side .brand' }), L('Connection shows Online', { css: '.conn' }), L('Number of open requests', { css: '.side .badge' }), L('Needs attention group', { text: 'Needs attention' }), C('Overdue tab', { btn: 'Overdue', within: '.seg' })],
+    slug: 'dashboard-home', title: 'The Dashboard', say: 'The Dashboard is the first screen. The sidebar lists the eleven areas of the desk, and the small numbers show how much is open in each.',
+    targets: [L('Hotel name and logo', { css: '.side .brand' }), L('The eleven areas', { css: '.side-list' }), L('Connection shows Online', { css: '.conn' }), L('Four quick buttons', { css: '.screen .btn', has: 'New Request' })],
   });
-  await shot(c, { slug: 'requests-overdue', title: 'Overdue requests only', say: 'The Overdue tab shows only the requests that took longer than their target time.', targets: [L('A late request', { css: '.ticket', nth: 0 }), C('On hold tab', { btn: 'On hold', within: '.seg' })] });
-  await shot(c, { slug: 'requests-on-hold', title: 'Requests waiting on something', say: 'A request that has to wait, for example a guest who does not want to be disturbed, is parked here and its timer stops.', targets: [L('A request on hold', { css: '.ticket', nth: 0 }), C('Done tab', { btn: 'Done', within: '.seg' })] });
-  await shot(c, { slug: 'requests-done', title: 'Finished this shift', say: 'The Done tab keeps a short list of everything finished during the shift.', targets: [L('A finished request', { css: '.ticket', nth: 0 }), C('Open tab', { btn: 'Open', within: '.seg' }), newRequest(env)] });
+  await shot(c, {
+    slug: 'dashboard-counts', title: 'Counts for every area', say: 'Each card is a live count. Tap a card to open that area, for example Overdue to see the late requests.',
+    targets: [L('Open requests', { css: '.db-card', nth: 0 }), L('Overdue requests', { css: '.db-card', nth: 1 }), L('Reminders waiting', { css: '.db-card', nth: 5 }), L('Rooms ready to clean', { css: '.db-card', nth: 6 })],
+  });
+  await shot(c, {
+    slug: 'dashboard-response-times', title: 'How fast the desk answers', say: 'Response times are checked against each request’s own target. Time on hold is taken out, so waiting for a guest is never held against the team.',
+    scroll: { spec: { css: '.dash-h', has: 'Response times' }, block: 'top' }, targets: [L('Response times', { css: '.dash-h', has: 'Response times', words: true }), L('Crisis cases', { css: '.db-card', nth: 10 }), L('Trips today', { css: '.db-card', nth: 11 }), L('Work orders', { css: '.db-card', nth: 12 })],
+  });
+  await shot(c, {
+    slug: 'dashboard-recent', title: 'The latest requests', say: 'The newest requests are listed here with a button for the next step. Relay sends one to its team without leaving the Dashboard.',
+    scroll: { spec: { css: '.dash-h', has: 'Recent Tickets' }, block: 'top' }, targets: [L('Latest requests', { css: '.dash-h', has: 'Recent Tickets', words: true }), C('View all requests', scr('View all'))],
+  });
+  await shot(c, {
+    slug: 'dashboard-handover', title: 'Shift handover on the Dashboard', say: 'The handover for the next shift is a panel on the Dashboard: promises made to guests, what was left by someone off shift and what is already overdue.',
+    prep: (p) => env.steps(p, [side(env, 'Dashboard')]), scroll: { spec: { css: '.dash-h', has: 'Shift handover' }, block: 'top' },
+    targets: [L('Promises made to guests', { css: '.group-title', has: 'Promises made to guests', words: true }), L('Left by someone off shift', { css: '.group-title', has: 'went off shift', words: true }), L('Already overdue', { css: '.group-title', has: 'Already overdue', words: true })],
+  });
+  await shot(c, {
+    slug: 'dashboard-handover-return', title: 'Return requests to the team', say: 'Requests that belong to someone who went off shift can be sent back to their team queue with one tap.',
+    scroll: { spec: scr('Return 1'), block: 'center' }, targets: [C('Return to the team queue', scr('Return 1'))],
+  });
+  await shot(c, {
+    slug: 'dashboard-handover-sign', title: 'Sign the handover', say: 'When the next person has read the list, tap Acknowledge handover. The name and the time are kept.',
+    scroll: { spec: scr('Acknowledge handover'), block: 'end' }, targets: [C('Acknowledge handover', scr('Acknowledge handover'))],
+  });
+  await shot(c, {
+    slug: 'dashboard-handover-signed', title: 'Handover signed', say: 'The panel shows who signed and when. The person going off shift is released.',
+    scroll: { spec: { css: '.banner.ok' }, block: 'center' }, targets: [L('Who signed and when', { css: '.banner.ok' }), side(env, 'Requests')],
+  });
 });
 
 /* ---------- B2. THE OTHER HOTEL ---------- */
@@ -91,6 +121,6 @@ add('B2', async (env) => {
   const { shot, chapter, L } = env;
   const c = await env.newPage(env.browser, { vp: 'desktop', url: deskUrl(env, { hotel: 'boracay' }), role: 'owner', hotel: 'boracay' });
   chapter('B2', 'One desk, two hotels', 'owner', 'Each hotel gets its own name, logo and colours. The screens work the same way.');
-  await shot(c, { slug: 'requests-list-boracay', title: 'The Boracay hotel desk', say: 'The Boracay hotel uses the same desk in its own teal colours and with its own name and logo.', targets: [L('Hotel name and logo', { css: '.side .brand' }), L('Teal colour of the hotel', { css: '.side-item[aria-current]' })] });
+  await shot(c, { slug: 'dashboard-boracay', title: 'The Boracay hotel desk', say: 'The Boracay hotel uses the same desk in its own teal colours and with its own name and logo.', targets: [L('Hotel name and logo', { css: '.side .brand' }), L('Teal colour of the hotel', { css: '.side-item[aria-current]' })] });
   await c.page.close();
 });
