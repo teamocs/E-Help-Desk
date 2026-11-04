@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BUILTIN_DEFS, SEED_CATALOG, defOf, deleteBlocker, entriesOf, fieldProblem, validateList, type Catalog, type ListDef } from '../../domain/catalog';
+import { BUILTIN_DEFS, SEED_CATALOG, defOf, deleteBlocker, entriesOf, fieldProblem, staffPhonesOn, validateList, type Catalog, type ListDef } from '../../domain/catalog';
+import { pinPeople } from '../../domain/rules';
+import type { Staff } from '../../domain/types';
 import { archiveQuestion, blankRow, isDirty, listSummary, toPayload, toRows } from '../../domain/listEdit';
 import { REPORT_COMMANDS, readRefusal } from '../access';
 import { TITLES, canEditLists, sectionsFor } from './sections';
@@ -29,7 +31,7 @@ describe('Configuration sections', () => {
     expect(s.slice(0, 5).map((x) => x.title)).toEqual(['Hotel Profile', 'Departments & Staff', 'Service Items', 'Crisis Codes', 'Vehicles']);
     expect(s.map((x) => x.id)).toEqual([
       'profile', 'departments', 'requestTypes', 'crisisCodes', 'vehicles', 'jobTitles', 'holdReasons', 'bundles', 'woFindings',
-      'spaRooms', 'hdo', 'staff', 'logins', 'display', 'feel',
+      'spaRooms', 'hdo', 'staffPhones', 'staff', 'logins', 'display', 'feel',
     ]);
     expect(s.find((x) => x.id === 'spaRooms')).toMatchObject({ kind: 'list', title: 'Spa rooms', def: NEWLIST, edit: true });
     expect(TITLES.woFindings).toBe('Work-Order Findings');
@@ -111,5 +113,51 @@ describe('access mirror: report-only work orders', () => {
     expect(readRefusal('workorders', 'assessWo')).toBe('You can report a new one in Work Orders, but only the help desk or the team that handles it can change it.');
     expect(readRefusal('housestatus', 'logHouse')).toBe('Your role can only view House Status.');
     expect(readRefusal('housestatus', 'reportWo')).toBe('Your role can only view House Status.');
+  });
+});
+
+describe('Staff phones', () => {
+  const sec = (v: Parameters<typeof sectionsFor>[1]) => sectionsFor(cat.defs!, v).find((x) => x.id === 'staffPhones');
+
+  it('is off unless the catalog says on, and a department can switch itself off (Azl_Catalog::staff_phones)', () => {
+    expect(SEED_CATALOG.staffPhones).toBeUndefined();
+    expect(staffPhonesOn(SEED_CATALOG, 'housekeeping')).toBe(false);
+    const on: Catalog = { ...SEED_CATALOG, staffPhones: true };
+    expect(staffPhonesOn(on, 'housekeeping')).toBe(true);
+    expect(staffPhonesOn(on, null)).toBe(true);
+    const hkOff: Catalog = { ...on, departments: on.departments.map((d) => (d.key === 'housekeeping' ? { ...d, staffPhones: false } : d)) };
+    expect(staffPhonesOn(hkOff, 'housekeeping')).toBe(false);
+    expect(staffPhonesOn(hkOff, 'engineering')).toBe(true);
+    // A department flag never turns on what the hotel switch has off.
+    expect(staffPhonesOn({ ...hkOff, staffPhones: false }, 'engineering')).toBe(false);
+    expect(staffPhonesOn({ ...on, staffPhones: 'yes' as never }, 'engineering')).toBe(false);
+  });
+
+  it('the Configuration section is for the hotel owner and managers to change; a supervisor only reads it; a PIN person does not see it', () => {
+    expect(sec({ level: 'full', role: 'owner', asAccount: true })).toMatchObject({ kind: 'staffPhones', title: 'Staff Phones', edit: true });
+    expect(sec({ level: 'full', role: 'manager', asAccount: true })?.edit).toBe(true);
+    expect(sec({ level: 'read', role: 'supervisor', asAccount: true })?.edit).toBe(false);
+    expect(sec({ level: 'full', role: 'owner', asAccount: false })?.edit).toBe(false); // an owner acting as a PIN person
+    expect(sec({ level: 'own', role: 'device', asAccount: false })).toBeUndefined();
+  });
+
+  it('the department flag is a yes/no with the server wording, and a row left alone is not changed', () => {
+    const d = toPayload(toRows(SEED_CATALOG, 'departments'));
+    expect(validateList('departments', d.map((x, i) => (i === 0 ? { ...x, staffPhones: false } : x)), SEED_CATALOG)).toBeNull();
+    expect(validateList('departments', d.map((x, i) => (i === 2 ? { ...x, staffPhones: 'no' as never } : x)), SEED_CATALOG)).toEqual({ index: 2, error: 'Choose whether its staff may use shared phones.' });
+    expect(defOf(SEED_CATALOG, 'departments')?.fields.map((f) => f.name)).toEqual(['short', 'repairs', 'staffPhones']);
+    // Ticking it back on sends nothing (the server stores only "off"), so the editor is not dirty.
+    const rows = toRows(SEED_CATALOG, 'departments');
+    expect(isDirty(rows.map((r, i) => (i === 0 ? { ...r, staffPhones: undefined } : r)), SEED_CATALOG, 'departments')).toBe(false);
+  });
+
+  it('the "Who\'s on shift?" picker offers no department staff who are off, and never the account itself', () => {
+    const people: Staff[] = [
+      { id: 'member', name: 'Owner', initials: 'O', role: 'owner', title: '', onShift: true },
+      { id: 'a', name: 'Maria', initials: 'M', role: 'hdo', title: '', dept: 'frontdesk', onShift: true },
+      { id: 'b', name: 'Joel', initials: 'J', role: 'staff', title: '', dept: 'housekeeping', onShift: true, phone: false },
+      { id: 'c', name: 'Ramon', initials: 'R', role: 'staff', title: '', dept: 'engineering', onShift: true },
+    ];
+    expect(pinPeople(people).map((p) => p.id)).toEqual(['a', 'c']);
   });
 });

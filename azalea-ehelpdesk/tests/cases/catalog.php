@@ -55,6 +55,7 @@ function refusal( array $r ): array {
 test(
 	'catalog: the seed equals the old constants, is stored once on first read, and starts at revision 0',
 	function () {
+		delete_option( Azl_Catalog::OPTION ); // the runner switched Staff phones on for the other tests; this is a fresh install
 		eq( null, get_option( Azl_Catalog::OPTION, null ), 'nothing stored before the first read' );
 		$c = Azl_Catalog::get();
 		eq( 0, $c['catalogRev'] );

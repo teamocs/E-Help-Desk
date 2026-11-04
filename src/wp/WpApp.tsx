@@ -46,10 +46,21 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
   let retry: ReturnType<typeof setTimeout> | undefined;
   const scope = `wp:${cfg.property.id}`;
 
+  // Staff phones switched off while a staff member is signed in: the server flags them `phone: false`. Sign them out
+  // and say why on the PIN screen, instead of leaving an empty desk that refuses every tap.
+  const endIfPhonesOff = () => {
+    const s = app.get();
+    const who = s.me && s.staff.find((p) => p.id === s.me);
+    if (!deviceOnly || !who || who.phone !== false) return;
+    void staffApi.current?.signOut();
+    app.set((x) => ({ ...x, me: null }));
+    setUI({ screen: "lock", sheet: null, lockNote: "Staff phones were switched off at this hotel, so you have been signed out. Ask the help desk to log your work." });
+  };
+
   setUI({ account: { name: cfg.user.name, role, hotel: cfg.theme.name || cfg.property.name, logoUrl: cfg.theme.logoUrl, modules: cfg.user.modules }, access: cfg.access });
   remote.enable(
     { run: (cmd) => api.command(cmd), load: async () => (await api.snapshot()).snapshot },
-    { snapshot: (s) => applySnapshot(s, me), error: (message) => toast(message, "error"), status: (sync) => setUI({ sync }) },
+    { snapshot: (s) => { applySnapshot(s, me); endIfPhonesOff(); }, error: (message) => toast(message, "error"), status: (sync) => setUI({ sync }) },
     { scope, stamp: (cmd) => api.stamp(cmd) },
   );
   staffApi.current = {
@@ -70,6 +81,12 @@ export function connect(cfg: AzlConfig, api: WpApi, onLoadError: (message: strin
       if (!canEditLists(role)) return LISTS_ONLY;
       const r = await api.putCatalog(list, items, baseRev);
       // Saved, or someone else saved first: every screen follows the server's lists at once.
+      if (r.ok || r.catalog) setCatalog(r.catalog!);
+      return r;
+    },
+    saveStaffPhones: async (on, baseRev) => {
+      if (!canEditLists(role)) return { ok: false, error: "Only the hotel owner or a manager can change Staff phones." };
+      const r = await api.putStaffPhones(on, baseRev);
       if (r.ok || r.catalog) setCatalog(r.catalog!);
       return r;
     },

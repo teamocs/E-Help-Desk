@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { PROFILE_MAX, REQUEST_ICONS, defsOf, entriesOf, type Bundle, type Catalog, type Department, type HotelProfile, type ModuleEntry, type RequestType } from '../../domain/catalog';
+import { PROFILE_MAX, REQUEST_ICONS, defsOf, entriesOf, staffPhonesOn, type Bundle, type Catalog, type Department, type HotelProfile, type ModuleEntry, type RequestType } from '../../domain/catalog';
 import { listSummary } from '../../domain/listEdit';
 import { staffApi } from '../../domain/staffApi';
 import { toast, useApp, useUI } from '../../domain/store';
@@ -7,13 +7,13 @@ import { ListEditor, listIcon } from '../../screens/Lists';
 import { Logins } from '../../screens/Logins';
 import { DisplayPrefs, FeelPrefs, SignedIn } from '../../screens/Settings';
 import { StaffAdmin } from '../../screens/StaffAdmin';
-import { Button, Icon, Screen, useTier } from '../../ui/kit';
+import { Button, Icon, Screen, Switch, useTier } from '../../ui/kit';
 import { Sheet } from '../../ui/sheet';
 import { useLevel } from '../workorders/model';
 import { sectionsFor, type Section } from './sections';
 import './config.css';
 
-const SECTION_ICON: Record<string, string> = { profile: 'star', hdo: 'phone', staff: 'user', logins: 'key', display: 'sun', feel: 'device' };
+const SECTION_ICON: Record<string, string> = { profile: 'star', hdo: 'phone', staffPhones: 'device', staff: 'user', logins: 'key', display: 'sun', feel: 'device' };
 const iconOf = (s: Section) => (s.kind === 'list' ? listIcon(s.id) : SECTION_ICON[s.kind] ?? 'gear');
 
 /**
@@ -63,7 +63,7 @@ export function Configuration() {
 
 function summaryOf(s: Section, cat: Catalog): string {
   if (s.kind === 'list') return listSummary(cat, s.id);
-  return { profile: 'Name, contact and address', hdo: 'Who staffs the help desk', staff: 'People who sign in with a PIN', logins: 'People who sign in with an email', display: 'Text size, contrast, motion', feel: 'Vibration, sounds, shortcuts' }[s.kind] ?? '';
+  return { profile: 'Name, contact and address', hdo: 'Who staffs the help desk', staffPhones: cat.staffPhones === true ? 'On' : 'Off', staff: 'People who sign in with a PIN', logins: 'People who sign in with an email', display: 'Text size, contrast, motion', feel: 'Vibration, sounds, shortcuts' }[s.kind] ?? '';
 }
 
 /** Desktop: the section list beside the page; the current section is marked as you scroll. */
@@ -139,6 +139,8 @@ function SectionBody({ section: s, onEdit, inline }: { section: Section; onEdit:
       );
     case 'hdo':
       return s.edit ? <StaffAdmin only="hdo" /> : <HdoView />;
+    case 'staffPhones':
+      return <StaffPhones edit={s.edit} />;
     case 'staff':
       return <StaffAdmin />;
     case 'logins':
@@ -212,6 +214,52 @@ function HdoView() {
     <>
       <Chips label="Help-desk officers" items={hdo.map((p) => ({ key: p.id, label: p.name }))} />
       <p className="t-foot c2 cfg-note">Help-desk officers sign in with a PIN. The hotel owner or a manager adds them under Staff (PINs).</p>
+    </>
+  );
+}
+
+/* ---------- staff phones ---------- */
+
+export const STAFF_PHONES_HELP = 'When off, only the help desk logs and moves work. Turn on to let department staff use a shared phone to see their own jobs and mark On site and Done.';
+
+/** The hotel's Staff phones switch, and what each department does with it (a department is switched off in Departments & Staff). */
+function StaffPhones({ edit }: { edit: boolean }) {
+  const cat = useApp((s) => s.catalog);
+  const on = cat.staffPhones === true;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  // Like the lists, this saves online only: say so, rather than letting the tap fail.
+  const offline = useUI((s) => s.sync.offline || s.pollDown);
+
+  async function change(next: boolean) {
+    const api = staffApi.current;
+    if (!api || busy) return;
+    setBusy(true);
+    const r = await api.saveStaffPhones(next, cat.catalogRev);
+    setBusy(false);
+    if (!r.ok) { setError(r.error); return; }
+    setError('');
+    toast(next ? 'Staff phones are on.' : 'Staff phones are off.', 'success');
+  }
+
+  const depts = cat.departments.filter((d) => d.active);
+  return (
+    <>
+      <div className="row cfg-phones" style={{ padding: 0 }}>
+        <span className="grow">
+          <span id="cfg-phones-label" style={{ display: 'block', fontWeight: 600 }}>Staff phones</span>
+          <span className="t-foot c2" id="cfg-phones-help" style={{ display: 'block' }}>{STAFF_PHONES_HELP}</span>
+        </span>
+        {edit ? <Switch checked={on} disabled={offline || busy} onChange={(v) => void change(v)} label="Staff phones" /> :<span className="cfg-tag">{on ? 'On' : 'Off'}</span>}
+      </div>
+      {edit && offline && <p className="field-help" role="status">No connection. Connect to the internet to change this; it is not saved offline.</p>}
+      {error && <p className="field-help" role="alert" style={{ color: 'var(--bad)' }}>{error}</p>}
+      {on && depts.length > 0 && (
+        <Chips label="Departments whose staff may use shared phones" items={depts.map((d) => ({ key: d.key, label: `${d.label}: ${staffPhonesOn(cat, d.key) ? "on" : "off"}` }))} />
+      )}
+      <p className="t-foot c2 cfg-note">
+        {edit ? 'Staff never assign or move work, whatever this says. To keep one team off shared phones, untick it under Departments & Staff.' : 'Only the hotel owner or a manager changes this.'}
+      </p>
     </>
   );
 }

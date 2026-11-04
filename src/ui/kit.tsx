@@ -82,9 +82,9 @@ export function Segmented<T extends string>({ value, onChange, options, label }:
   );
 }
 
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" onClick={() => { haptic(checked ? 'light' : 'medium'); onChange(!checked); }}>
+    <button type="button" role="switch" aria-checked={checked} aria-label={label} className="switch" disabled={disabled} onClick={() => { haptic(checked ? 'light' : 'medium'); onChange(!checked); }}>
       <motion.i layout transition={springs.snappy} />
     </button>
   );

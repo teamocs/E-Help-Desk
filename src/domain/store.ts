@@ -101,6 +101,8 @@ export interface UI {
   sync: { pending: number; offline: boolean };
   /** The last poll for changes failed. */
   pollDown: boolean;
+  /** Why the PIN screen is showing, when it is not a normal switch of person (e.g. Staff phones were switched off). */
+  lockNote?: string;
   /** A shared phone's account: no manager mode, so staff must sign in with a PIN. */
   deviceOnly: boolean;
   account: Account;
@@ -206,7 +208,7 @@ export const paperMode = (s: State) => !s.net.power && s.net.ups <= 0;
 /* ---------- auth ---------- */
 export function unlock(id: string) {
   app.set((s) => ({ ...s, me: id }));
-  setUI({ screen: 'app', sheet: null });
+  setUI({ screen: 'app', sheet: null, lockNote: undefined });
 }
 export function lock() {
   setUI({ screen: 'lock', sheet: null });

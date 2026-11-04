@@ -343,6 +343,19 @@ describe("catalog", () => {
     expect(r).toMatchObject({ ok: true, catalog: { catalogRev: 4 } });
   });
 
+  it("putStaffPhones sends the switch with baseRev to /staff-phones and answers like a list save", async () => {
+    const f = fakeFetch(() => json(200, { ok: true, catalog: { ...cat, catalogRev: 5, staffPhones: true }, usage: {} }));
+    const r = await createWpApi(cfg, { fetch: f.fetch }).putStaffPhones(true, 4);
+    expect(f.calls[0]!.url).toBe(`${BASE}staff-phones`);
+    expect(f.calls[0]!.method).toBe("PUT");
+    expect(f.calls[0]!.body).toEqual({ on: true, baseRev: 4 });
+    expect(r).toMatchObject({ ok: true, catalog: { catalogRev: 5, staffPhones: true } });
+    const stale = await createWpApi(cfg, { fetch: fakeFetch(() => json(409, { ok: false, code: "azl_stale", error: "x", catalog: { ...cat, catalogRev: 9 }, usage: {} })).fetch }).putStaffPhones(false, 4);
+    expect(stale).toMatchObject({ ok: false, stale: true, catalog: { catalogRev: 9 } });
+    const forbidden = await createWpApi(cfg, { fetch: fakeFetch(() => json(403, { code: "rest_forbidden", message: "Sorry, you are not allowed to do that." })).fetch }).putStaffPhones(true, 4);
+    expect(forbidden.ok).toBe(false);
+  });
+
   it("a stale save comes back with the fresh lists and the refresh message", async () => {
     const fresh = { ...cat, catalogRev: 9 };
     const f = fakeFetch(() => json(409, { ok: false, code: "azl_stale", error: "x", catalog: fresh, usage: {} }));

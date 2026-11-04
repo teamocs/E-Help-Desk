@@ -98,6 +98,27 @@ function seed_staff(): void {
 	}
 }
 
+/**
+ * Staff phones for the test hotel: true or false sets the hotel switch (departments in $off_depts are switched off),
+ * null removes it, which is how a fresh install looks. The runner turns it ON before every test: most tests act as
+ * department staff on a shared phone. The real default is off, and the staff phones tests say so themselves.
+ */
+function set_staff_phones( ?bool $on, array $off_depts = array() ): void {
+	$cat = Azl_Catalog::get();
+	if ( null === $on ) {
+		unset( $cat['staffPhones'] );
+	} else {
+		$cat['staffPhones'] = $on;
+	}
+	foreach ( $cat['departments'] as $i => $d ) {
+		unset( $cat['departments'][ $i ]['staffPhones'] );
+		if ( in_array( $d['key'], $off_depts, true ) ) {
+			$cat['departments'][ $i ]['staffPhones'] = false;
+		}
+	}
+	update_option( Azl_Catalog::OPTION, wp_json_encode( $cat ), false );
+}
+
 /** The account a command comes from when a test signed nobody in: a Hotel Owner (full access to every module). */
 const TEST_OWNER = 1;
 
@@ -191,6 +212,7 @@ foreach ( $GLOBALS['azl_tests'] as list( $azl_name, $azl_fn ) ) {
 	}
 	azl_reset();
 	seed_staff();
+	set_staff_phones( true );
 	try {
 		$azl_fn();
 		$azl_pass++;

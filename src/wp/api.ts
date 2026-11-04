@@ -65,6 +65,8 @@ export interface WpApi {
   getCatalog(): Promise<Outcome<CatalogView>>;
   /** PUT /catalog/<list>: replaces one whole list, refused when the catalog moved past baseRev. */
   putCatalog(list: string, items: Draft[], baseRev: number): Promise<CatalogSave>;
+  /** PUT /staff-phones: turns the hotel's Staff phones switch on or off (owner and manager), refused when the catalog moved past baseRev. */
+  putStaffPhones(on: boolean, baseRev: number): Promise<CatalogSave>;
   /** GET /profile and PUT /profile (owner): the hotel profile on the Configuration page. */
   getProfile(): Promise<Outcome<{ profile: HotelProfile }>>;
   putProfile(p: Omit<HotelProfile, "timeZone">): Promise<Outcome<{ profile: HotelProfile }>>;
@@ -215,6 +217,27 @@ export function createWpApi(cfg: Pick<AzlConfig, "restUrl" | "nonce">, deps: Api
     return { ok: false, error: retryable(r.status) ? OFFLINE : messageOf(r.data) };
   }
 
+  /** PUT a whole-catalog save (a list, or the Staff phones switch): the saved catalog, or why not. */
+  async function saveCatalog(path: string, payload: unknown): Promise<CatalogSave> {
+    let r: Reply;
+    try {
+      r = await call("PUT", path, payload);
+    } catch {
+      return { ok: false, error: OFFLINE };
+    }
+    if (sessionEnded(r)) {
+      lost();
+      return { ok: false, error: "Please sign in again." };
+    }
+    const d = isObj(r.data) ? r.data : {};
+    if (r.status >= 200 && r.status < 300 && d.ok === true && isCatalog(d.catalog)) return { ok: true, catalog: d.catalog, usage: usageOf(d.usage) };
+    if (retryable(r.status)) return { ok: false, error: OFFLINE };
+    if (codeOf(d) === "azl_stale") {
+      return { ok: false, stale: true, error: STALE_LIST, ...(isCatalog(d.catalog) ? { catalog: d.catalog, usage: usageOf(d.usage) } : {}) };
+    }
+    return { ok: false, error: messageOf(d), ...(Number.isInteger(d.index) ? { index: d.index as number } : {}) };
+  }
+
   return {
     get nonce() {
       return nonce;
@@ -320,24 +343,7 @@ export function createWpApi(cfg: Pick<AzlConfig, "restUrl" | "nonce">, deps: Api
     getProfile: () => outcome("GET", "/profile", undefined, (d) => ({ profile: profileOf(d.profile) })),
     putProfile: (p) => outcome("PUT", "/profile", p, (d) => ({ profile: profileOf(d.profile) })),
 
-    async putCatalog(list, items, baseRev) {
-      let r: Reply;
-      try {
-        r = await call("PUT", `/catalog/${encodeURIComponent(list)}`, { items, baseRev });
-      } catch {
-        return { ok: false, error: OFFLINE };
-      }
-      if (sessionEnded(r)) {
-        lost();
-        return { ok: false, error: "Please sign in again." };
-      }
-      const d = isObj(r.data) ? r.data : {};
-      if (r.status >= 200 && r.status < 300 && d.ok === true && isCatalog(d.catalog)) return { ok: true, catalog: d.catalog, usage: usageOf(d.usage) };
-      if (retryable(r.status)) return { ok: false, error: OFFLINE };
-      if (codeOf(d) === "azl_stale") {
-        return { ok: false, stale: true, error: STALE_LIST, ...(isCatalog(d.catalog) ? { catalog: d.catalog, usage: usageOf(d.usage) } : {}) };
-      }
-      return { ok: false, error: messageOf(d), ...(Number.isInteger(d.index) ? { index: d.index as number } : {}) };
-    },
+    putCatalog: (list, items, baseRev) => saveCatalog(`/catalog/${encodeURIComponent(list)}`, { items, baseRev }),
+    putStaffPhones: (on, baseRev) => saveCatalog("/staff-phones", { on, baseRev }),
   };
 }

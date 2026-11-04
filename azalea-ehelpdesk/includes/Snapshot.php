@@ -101,6 +101,7 @@ final class Azl_Snapshot {
 			'SELECT id, name, initials, role, title, dept, on_shift FROM ' . Azl_Db::t( 'staff' ) . ' WHERE active = 1 ORDER BY created_at, id'
 		);
 		$out  = array();
+		$cat  = Azl_Catalog::get();
 		foreach ( $rows as $s ) {
 			$out[] = self::opt(
 				array(
@@ -111,6 +112,9 @@ final class Azl_Snapshot {
 					'title'    => $s['title'],
 					'dept'     => $s['dept'],
 					'onShift'  => '1' === (string) $s['on_shift'],
+					// Staff phones is off for this person's department: the "Who's on shift?" picker does not offer them
+					// (they stay in the list: records keep showing their name). Sent only when false.
+					'phone'    => 'staff' === $s['role'] && ! Azl_Catalog::staff_phones( $cat, $s['dept'] ) ? false : null,
 				)
 			);
 		}

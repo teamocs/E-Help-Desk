@@ -30,6 +30,8 @@ export interface StaffApi {
   catalog(): Promise<Outcome<CatalogView>>;
   /** Saves one list. On success, and when someone else saved first, every screen gets the server's lists. */
   saveList(list: string, items: Draft[], baseRev: number): Promise<CatalogSave>;
+  /** Turns the hotel's Staff phones switch on or off (owner and manager). Answers like saveList. */
+  saveStaffPhones(on: boolean, baseRev: number): Promise<CatalogSave>;
   /** The hotel profile (every desk role reads it). */
   profile(): Promise<Outcome<{ profile: HotelProfile }>>;
   /** Saves the hotel profile (the hotel owner only). */

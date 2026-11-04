@@ -61,7 +61,7 @@ test(
 			ok( in_array( $list, Azl_Catalog::lists(), true ), "$list is a list" );
 		}
 		eq(
-			array( 'key' => 'departments', 'label' => 'Departments', 'noun' => array( 'department', 'departments' ), 'help' => Azl_Catalog::META['departments'][1], 'maxItems' => 40, 'fields' => array( array( 'name' => 'short', 'label' => 'badge', 'type' => 'text', 'max' => 6, 'required' => true ), array( 'name' => 'repairs', 'label' => 'handles repairs', 'type' => 'bool', 'default' => false ) ) ),
+			array( 'key' => 'departments', 'label' => 'Departments', 'noun' => array( 'department', 'departments' ), 'help' => Azl_Catalog::META['departments'][1], 'maxItems' => 40, 'fields' => array( array( 'name' => 'short', 'label' => 'badge', 'type' => 'text', 'max' => 6, 'required' => true ), array( 'name' => 'repairs', 'label' => 'handles repairs', 'type' => 'bool', 'default' => false ), array( 'name' => 'staffPhones', 'label' => 'staff phones', 'type' => 'bool', 'default' => true ) ) ),
 			cfg_def( 'departments' )
 		);
 		eq( array( 'dept', 'slaMin', 'icon' ), array_column( cfg_def( 'requestTypes' )['fields'], 'name' ) );

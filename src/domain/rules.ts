@@ -14,6 +14,12 @@ export const STAFF: Staff[] = [
   { id: 's-dennis', name: 'Dennis Lim', initials: 'DL', role: 'staff', title: 'Night Engineer', dept: 'engineering', onShift: false },
 ];
 
+/**
+ * The people the "Who's on shift?" picker offers: everyone except the owner or manager account itself and department
+ * staff whose department has Staff phones switched off (the server flags them `phone: false` and refuses their PIN).
+ */
+export const pinPeople = (staff: Staff[]): Staff[] => staff.filter((p) => p.id !== 'member' && p.phone !== false);
+
 export const ROLE_LABEL = { hdo: 'Desk officer', staff: 'Staff', supervisor: 'Supervisor', manager: 'Duty manager', owner: 'Owner' } as const;
 
 export const HAZARDS: Record<Hazard, { label: string; call: string }> = {

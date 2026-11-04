@@ -96,6 +96,8 @@ final class Azl_Access {
 	const CLEANING_DEPT = 'housekeeping';
 
 	const NO_PIN = 'Sign in with your PIN first.';
+	/** Staff phones switched off (hotel or department) for a department staff member (Azl_Catalog::staff_phones). */
+	const PHONES_OFF = 'Staff phones are switched off at this hotel. Ask the help desk to log your work.';
 	const OWN    = 'You can only work on items of your own department.';
 	/** Read access to a module that has a report command (Work Orders for a department that does not handle repairs). */
 	const REPORT_ONLY = 'You can report a new one in %s, but only the help desk or the team that handles it can change it.';
@@ -123,7 +125,11 @@ final class Azl_Access {
 		return self::staff_kind( $staff_id );
 	}
 
-	/** A shared phone acts as the job role of the staff member signed in with a PIN. */
+	/**
+	 * A shared phone acts as the job role of the staff member signed in with a PIN. Department staff (role staff) are
+	 * kind none, with 'off' => true, while Staff phones is off for their department; help-desk officers, supervisors
+	 * and managers are never affected. A token issued earlier stops working the same way, as it reads this too.
+	 */
 	public static function staff_kind( ?string $staff_id ): array {
 		$row = null === $staff_id ? null : Azl_Db::row( 'SELECT role, dept FROM ' . Azl_Db::t( 'staff' ) . ' WHERE id = %s AND active = 1', array( strtolower( $staff_id ) ) );
 		if ( null === $row ) {
@@ -136,7 +142,15 @@ final class Azl_Access {
 			'manager'    => 'manager',
 			'owner'      => 'manager',
 		)[ $row['role'] ] ?? 'none';
+		if ( 'staff' === $kind && ! Azl_Catalog::staff_phones( Azl_Catalog::get(), $row['dept'] ) ) {
+			return array( 'kind' => 'none', 'dept' => null, 'staff' => null, 'off' => true );
+		}
 		return array( 'kind' => $kind, 'dept' => $row['dept'], 'staff' => strtolower( $staff_id ) );
+	}
+
+	/** Why this person may not sign in with a PIN on a shared phone (Staff phones is off for them), or null. */
+	public static function sign_in_refusal( string $staff_id ): ?string {
+		return true === ( self::staff_kind( $staff_id )['off'] ?? false ) ? self::PHONES_OFF : null;
 	}
 
 	/* ---------- levels ---------- */
@@ -230,7 +244,7 @@ final class Azl_Access {
 			return 'Unknown command';
 		}
 		if ( 'none' === $who['kind'] ) {
-			return self::NO_PIN;
+			return true === ( $who['off'] ?? false ) ? self::PHONES_OFF : self::NO_PIN;
 		}
 		$level = self::level( $module, $who );
 		$def   = isset( self::COMMANDS[ $type ] ) ? null : Azl_Modules::command( $type );

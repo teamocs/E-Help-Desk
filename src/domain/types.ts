@@ -18,6 +18,8 @@ export interface Staff {
   title: string;
   dept?: Dept;
   onShift: boolean;
+  /** `false`: Staff phones is off for this person's department, so the "Who's on shift?" picker does not offer them. Absent means offered. */
+  phone?: boolean;
 }
 
 export interface ItemEvent { at: number; by: string; what: string }

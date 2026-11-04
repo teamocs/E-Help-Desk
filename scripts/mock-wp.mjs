@@ -7,7 +7,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { extname, join, normalize, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 // The desk's own catalog rules (Node runs the TypeScript file directly): seed, validation and the in-use check.
-import { LISTS, SEED_CATALOG, deleteBlocker, validateList } from "../src/domain/catalog.ts";
+import { LISTS, SEED_CATALOG, deleteBlocker, staffPhonesOn, validateList } from "../src/domain/catalog.ts";
 // The role matrix (the desk's copy of Azl_Access): window.AZL.user.modules, window.AZL.access and command refusals.
 import { LABELS, MATRIX, kindOfStaffRole, levelOf, readRefusal } from "../src/modules/access.ts";
 // The desk's undo rule (the same as Azl_Commands::undo_target).
@@ -90,6 +90,9 @@ const db = {
 const accounts = [{ id: 2, name: "Ana Villanueva", email: "ana@example.test", role: "manager", disabled: false }, { id: 3, name: "Front desk phone", email: "desk-phone@example.test", role: "device", disabled: false }];
 let rev = 1, nextId = 10;
 let catalog = structuredClone(SEED_CATALOG);
+// Staff phones is ON in the mock so the demo and the tests (staff on shared phones: Joel, Ramon, Paolo) keep working.
+// The real default is OFF: a plugin install, or an upgrade, with no setting stored has it off (Azl_Catalog::staff_phones).
+catalog.staffPhones = true;
 
 /* ---------- per-module extensions: every scripts/mock/<id>.mjs adds sample data, commands and a snapshot slice.
    export default { id, commandModule: { commandType: moduleId }, commands: { commandType: (c, x) => void | { ok:false, error } }, snapshot: (x) => slice }
@@ -138,6 +141,7 @@ function putList(list, b) {
   const bad = b.items.findIndex((x) => x.key && !known.has(x.key));
   if (bad >= 0) return [400, { ok: false, code: "azl_invalid", error: "This entry no longer exists. Reload the list.", index: bad }];
   const items = b.items.map((x) => ({ ...x, label: String(x.label ?? "").trim(), active: x.active !== false, ...(list === "departments" ? { repairs: x.repairs ?? false } : {}) }));
+  if (list === "departments") for (const d of items) if (d.staffPhones !== false) delete d.staffPhones; // only "off" is stored
   const problem = validateList(list, items, catalog, usage().openWorkOrders);
   if (problem) return [400, { ok: false, code: "azl_invalid", ...problem }];
   const kept = new Set(items.map((x) => x.key));
@@ -154,11 +158,23 @@ function putList(list, b) {
 /* ---------- access: the same answers as Azl_Access ---------- */
 const COMMAND_MODULE = { ackHandover: "dashboard", returnOrphans: "dashboard", assessWo: "workorders", startWo: "workorders", holdWo: "workorders", completeWo: "workorders", reopenWo: "workorders", cleanSet: "cleaning", raiseSafety: "crisis", downgradeIncident: "crisis", record911: "crisis", resolveIncident: "crisis" };
 const repairs = (dept) => catalog.departments.some((d) => d.key === dept && d.active && d.repairs);
-const whoOf = (role, actor) => (role === "device" ? (() => { const p = staff.find((x) => x.id === actor); return { kind: kindOfStaffRole(p?.role), dept: p?.dept }; })() : { kind: role });
+// A staff-role person is kind none (off: true) while Staff phones is off for their department, like Azl_Access::staff_kind.
+const PHONES_OFF = "Staff phones are switched off at this hotel. Ask the help desk to log your work.";
+const phoneOff = (p) => p?.role === "staff" && !staffPhonesOn(catalog, p.dept);
+const whoOf = (role, actor) => (role === "device" ? (() => { const p = staff.find((x) => x.id === actor); return phoneOff(p) ? { kind: "none", off: true } : { kind: kindOfStaffRole(p?.role), dept: p?.dept }; })() : { kind: role });
+const staffOut = () => staff.map((p) => (phoneOff(p) ? { ...p, phone: false } : p));
+// PUT /staff-phones: the hotel switch (owner and manager), versioned like a list save.
+function putStaffPhones(b) {
+  if (typeof b.on !== "boolean" || !Number.isInteger(b.baseRev)) return [400, { ok: false, code: "azl_invalid", error: "Choose on or off for staff phones." }];
+  if (b.baseRev !== catalog.catalogRev) return [409, { ok: false, code: "azl_stale", error: "Someone else changed this list. Your screen was refreshed; try again.", catalog, usage: usage() }];
+  catalog = { ...catalog, staffPhones: b.on, catalogRev: catalog.catalogRev + 1 };
+  rev++;
+  return [200, { ok: true, catalog, usage: usage() }];
+}
 const levels = (who) => Object.fromEntries(Object.keys(MATRIX).map((m) => [m, levelOf(m, who, MATRIX, repairs)]).filter(([, l]) => l !== "none"));
 function refusal(c, who) {
   const mod = COMMAND_MODULE[c.type] ?? EXT_MODULE[c.type] ?? "requests";
-  if (who.kind === "none") return "Sign in with your PIN first.";
+  if (who.kind === "none") return who.off ? PHONES_OFF : "Sign in with your PIN first.";
   const level = levelOf(mod, who, MATRIX, repairs);
   if (level === "none") return `Your role cannot use ${LABELS[mod]}.`;
   if (level === "read" && readRefusal(mod, c.type, LABELS[mod])) return readRefusal(mod, c.type, LABELS[mod]);
@@ -330,7 +346,7 @@ createServer(async (req, res) => {
   if (!p.startsWith(NS)) return send(res, 404, "Not found", "text/plain");
   const r = p.slice(NS.length), actor = /^tok-(.+)$/.exec(req.headers["x-azl-actor"] ?? "")?.[1] ?? null, role = roleOf(req);
   // Module slices: none of the wave 2 modules exist yet, so every reader gets an empty object.
-  if (r === "/snapshot") return send(res, 200, { ...db, staff, property: { id: "mock", name: "Mock" }, properties: [], at: Date.now(), actor, catalog, modules: extSnapshot(roleOf(req)) });
+  if (r === "/snapshot") return send(res, 200, { ...db, staff: staffOut(), property: { id: "mock", name: "Mock" }, properties: [], at: Date.now(), actor, catalog, modules: extSnapshot(roleOf(req)) });
   if (r === "/catalog" && m === "GET") return send(res, 200, { ok: true, catalog, usage: usage() });
   if (r === "/poll") { const since = Number(url.searchParams.get("since")); return send(res, 200, { ok: true, rev, changed: since !== rev }); }
   const route = EXT_ROUTES.find(([mm, re]) => mm === m && re.test(r));
@@ -346,10 +362,16 @@ createServer(async (req, res) => {
     if (why) return send(res, 200, { ok: false, error: why });
     return send(res, 200, apply(b, actor ?? "s-maria")); // an owner or manager's own account acts as the head desk officer in this mock
   }
+  if (r === "/pin/sign-in" && /^\d{4}$/.test(b.pin) && b.pin !== "0000" && phoneOff(staff.find((x) => x.id === b.staffId))) return send(res, 200, { ok: false, error: PHONES_OFF, code: "azl_phones_off" });
   if (r === "/pin/sign-in") return /^\d{4}$/.test(b.pin) && b.pin !== "0000" ? send(res, 200, { ok: true, token: `tok-${b.staffId}`, expiresAt: Date.now() + 12 * 3600_000, staff: { id: b.staffId } }) : send(res, 200, { ok: false, error: "That name and PIN do not match." });
   if (r === "/pin/sign-out" || r === "/auth/logout") return send(res, 200, { ok: true, redirect: "/helpdesk/login/" });
   if (r === "/staff" && m === "POST") { const id = `s-${nextId++}`; staff.push({ id, name: b.name, title: b.title, role: b.role, dept: b.dept, onShift: true, initials: b.name.slice(0, 2).toUpperCase() }); rev++; return send(res, 201, { ok: true, id }); }
   if (r.startsWith("/staff/")) { const s = staff.find((x) => x.id === r.slice(7)); if (b.active === false) staff.splice(staff.indexOf(s), 1); rev++; return send(res, 200, { ok: true }); }
+  if (r === "/staff-phones" && m === "PUT") {
+    if (role !== "owner" && role !== "manager") return send(res, 403, { code: "rest_forbidden", message: "Sorry, you are not allowed to do that." });
+    const [status, out] = putStaffPhones(b);
+    return send(res, status, out);
+  }
   if (r.startsWith("/catalog/") && m === "PUT") {
     if (role !== "owner" && role !== "manager") return send(res, 403, { code: "rest_forbidden", message: "Sorry, you are not allowed to do that." });
     const [status, out] = putList(r.slice(9), b);

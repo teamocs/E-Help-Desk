@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { ROLE_LABEL } from '../domain/rules';
+import { ROLE_LABEL, pinPeople } from '../domain/rules';
 import { setUI, unlock, useApp, useUI } from '../domain/store';
 import { staffApi } from '../domain/staffApi';
 import { haptic, tone } from '../lib/haptics';
@@ -13,8 +13,10 @@ export function Lock() {
   const all = useApp((s) => s.staff);
   const deviceOnly = useUI((s) => s.deviceOnly);
   const signedIn = useApp((s) => s.me);
-  // Everyone active is listed (the owner or manager account is not a PIN person).
-  const staff = all.filter((p) => p.id !== 'member');
+  const note = useUI((s) => s.lockNote);
+  // Everyone active is listed (the owner or manager account is not a PIN person), except department staff whose
+  // department has Staff phones switched off: the server would refuse their PIN.
+  const staff = pinPeople(all);
   const [who, setWho] = useState(staff[0]?.id ?? '');
   const [pin, setPin] = useState('');
   const [err, setErr] = useState(false);
@@ -68,6 +70,7 @@ export function Lock() {
         <div className="lock-brand"><Brand /></div>
         <h1 className="t-title1">Who’s on shift?</h1>
         <p className="t-sub c2" style={{ margin: '4px 0 0' }}>Pick your name, then enter your PIN.</p>
+        {note && <p className="t-sub" role="status" style={{ margin: '12px 0 0', color: 'var(--bad)' }}>{note}</p>}
 
         {staff.length === 0 && (
           <p className="t-body c2" style={{ margin: '24px 0' }}>No staff have been added yet. A manager can add people in Settings on their own phone.</p>

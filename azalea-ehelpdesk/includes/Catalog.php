@@ -5,7 +5,10 @@
  *
  * Shape (the same in src/domain/catalog.ts):
  *   { catalogRev: int,
- *     departments:  [{key, label, short, repairs, active}]  (repairs: its items can become work orders),
+ *     staffPhones:  bool  (hotel switch: department staff may use the desk on a shared phone; absent = off),
+ *     departments:  [{key, label, short, repairs, active, staffPhones?}]  (repairs: its items can become work orders;
+ *                   staffPhones false keeps this department's staff off shared phones even when the hotel switch is
+ *                   on, absent or true follows the hotel switch; see staff_phones()),
  *     requestTypes: [{key, label, dept, slaMin, icon, active}],
  *     bundles:      [{key, label, hint, parts: [{name, dept, slaMin, after?}], active}],
  *     holdReasons | jobTitles | woFindings: [{key, label, active}] }
@@ -110,6 +113,7 @@ final class Azl_Catalog {
 				return array(
 					array( 'name' => 'short', 'label' => 'badge', 'type' => 'text', 'max' => self::SHORT_MAX, 'required' => true ),
 					array( 'name' => 'repairs', 'label' => 'handles repairs', 'type' => 'bool', 'default' => false ),
+					array( 'name' => 'staffPhones', 'label' => 'staff phones', 'type' => 'bool', 'default' => true ),
 				);
 			case 'requestTypes':
 				return array(
@@ -327,6 +331,12 @@ final class Azl_Catalog {
 			if ( ! is_bool( $d['repairs'] ?? null ) ) { // stored before the flag existed: the factory value
 				$cat['departments'][ $i ]['repairs'] = (bool) ( Azl_Rules::DEPTS[ $d['key'] ?? '' ]['repairs'] ?? false );
 			}
+			if ( array_key_exists( 'staffPhones', $d ) && false !== $d['staffPhones'] ) { // only "off" is stored; anything else follows the hotel
+				unset( $cat['departments'][ $i ]['staffPhones'] );
+			}
+		}
+		if ( array_key_exists( 'staffPhones', $cat ) && ! is_bool( $cat['staffPhones'] ) ) {
+			unset( $cat['staffPhones'] ); // not a switch: off
 		}
 		// A module added since the lists were stored starts from its seed; it is stored with the next save.
 		foreach ( self::module_lists() as $key => $def ) {
@@ -368,6 +378,18 @@ final class Azl_Catalog {
 			wp_cache_delete( self::OPTION, 'options' ); // another request may have saved since this one started
 		}
 		return self::get();
+	}
+
+	/**
+	 * Whether department staff (role staff) may use the desk on a shared phone: the hotel switch is on and the
+	 * department has not been switched off. The switch is off when missing, so an upgraded install starts off.
+	 */
+	public static function staff_phones( array $cat, ?string $dept ): bool {
+		if ( true !== ( $cat['staffPhones'] ?? false ) ) {
+			return false;
+		}
+		$d = null === $dept ? null : self::find( $cat, 'departments', $dept );
+		return null === $d || false !== ( $d['staffPhones'] ?? true );
 	}
 
 	/** The entry with this key, archived or not, or null. */
@@ -476,6 +498,31 @@ final class Azl_Catalog {
 		);
 	}
 
+	/**
+	 * Turns the hotel's Staff phones switch on or off. Same locking, version check and answers as save().
+	 *
+	 * @return array{0: int, 1: array}
+	 */
+	public static function save_staff_phones( $on, $base_rev ): array {
+		if ( ! is_bool( $on ) || ! is_int( $base_rev ) ) {
+			return array( 400, self::invalid( 'Choose on or off for staff phones.' ) );
+		}
+		return Azl_Db::transaction(
+			static function () use ( $on, $base_rev ) {
+				$cur = self::locked();
+				if ( $base_rev !== $cur['catalogRev'] ) {
+					return array( false, array( 409, array( 'ok' => false, 'code' => 'azl_stale', 'error' => self::STALE, 'catalog' => $cur, 'usage' => self::usage() ) ) );
+				}
+				$next                = $cur;
+				$next['staffPhones'] = $on;
+				$next['catalogRev']  = $cur['catalogRev'] + 1;
+				update_option( self::OPTION, wp_json_encode( $next ), false );
+				Azl_Db::bump( 'change' );
+				return array( true, array( 200, array( 'ok' => true, 'catalog' => $next, 'usage' => self::usage() ) ) );
+			}
+		);
+	}
+
 	private static function invalid( string $error, ?int $index = null ): array {
 		return array( 'ok' => false, 'code' => 'azl_invalid', 'error' => $error ) + ( null === $index ? array() : array( 'index' => $index ) );
 	}
@@ -567,7 +614,14 @@ final class Azl_Catalog {
 					if ( ! is_bool( $repairs ) ) {
 						return self::err( 'Choose whether it handles repairs.', $i );
 					}
+					$phones = $in['staffPhones'] ?? true;
+					if ( ! is_bool( $phones ) ) {
+						return self::err( 'Choose whether its staff may use shared phones.', $i );
+					}
 					$row += array( 'short' => $short, 'repairs' => $repairs );
+					if ( ! $phones ) {
+						$row['staffPhones'] = false; // only "off" is stored; absent follows the hotel switch
+					}
 					break;
 				case 'requestTypes':
 					$bad = self::dept_problem( $cur, $in['dept'] ?? null, $active );

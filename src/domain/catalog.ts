@@ -5,7 +5,11 @@
 // itself. Plain TypeScript with no imports: scripts/mock-wp.mjs loads this file directly.
 
 /** `repairs`: the department handles repairs, so its on-site items can be escalated to a work order. */
-export interface Department { key: string; label: string; short: string; repairs: boolean; active: boolean }
+export interface Department {
+  key: string; label: string; short: string; repairs: boolean; active: boolean;
+  /** Only `false` is stored: this department's staff stay off shared phones even when the hotel switch is on. Absent follows the hotel switch. */
+  staffPhones?: boolean;
+}
 export interface RequestType { key: string; label: string; dept: string; slaMin: number; icon: string; active: boolean }
 export interface BundlePart { name: string; dept: string; slaMin: number; after?: number }
 export interface Bundle { key: string; label: string; hint: string; parts: BundlePart[]; active: boolean }
@@ -20,6 +24,8 @@ export interface Catalog {
   holdReasons: Choice[];
   jobTitles: Choice[];
   woFindings: Choice[];
+  /** The hotel's Staff phones switch: department staff may use the desk on a shared phone. Missing means off (the default). */
+  staffPhones?: boolean;
   /** Every list's definition (Azl_Catalog::defs()), sent with the lists; missing before the first snapshot. */
   defs?: ListDef[];
 }
@@ -100,7 +106,7 @@ const NOUNS: Record<ListName, [string, string]> = {
   holdReasons: ['hold reason', 'hold reasons'], jobTitles: ['job title', 'job titles'], woFindings: ['finding', 'findings'],
 };
 const BUILTIN_FIELDS: Partial<Record<ListName, FieldDef[]>> = {
-  departments: [{ name: 'short', label: 'badge', type: 'text', max: LIMITS.short, required: true }, { name: 'repairs', label: 'handles repairs', type: 'bool', default: false }],
+  departments: [{ name: 'short', label: 'badge', type: 'text', max: LIMITS.short, required: true }, { name: 'repairs', label: 'handles repairs', type: 'bool', default: false }, { name: 'staffPhones', label: 'staff phones', type: 'bool', default: true }],
   requestTypes: [{ name: 'dept', label: 'department', type: 'dept', required: true }, { name: 'slaMin', label: 'target (minutes)', type: 'int', min: 1, max: LIMITS.slaMin }, { name: 'icon', label: 'icon', type: 'icon' }],
   bundles: [{ name: 'hint', label: 'what it does', type: 'text', max: LIMITS.hint }, { name: 'parts', label: 'steps', type: 'parts', max: LIMITS.parts }],
 };
@@ -176,6 +182,13 @@ export function isCatalog(x: unknown): x is Catalog {
   const c = x as Record<string, unknown>;
   return Number.isInteger(c.catalogRev) && LISTS.every((l) => Array.isArray(c[l]));
 }
+
+/**
+ * Department staff may use the desk on a shared phone: the hotel switch is on and the department is not switched off
+ * (Azl_Catalog::staff_phones). The help desk, supervisors and managers never depend on it.
+ */
+export const staffPhonesOn = (cat: Catalog, dept?: string | null): boolean =>
+  cat.staffPhones === true && (dept == null || findKey(cat.departments, dept)?.staffPhones !== false);
 
 export const activeOf = <T extends { active: boolean }>(list: T[]): T[] => list.filter((x) => x.active);
 export const activeDepartments = (cat: Catalog) => activeOf(cat.departments);
@@ -272,6 +285,8 @@ export function validateList(list: string, items: Draft[], cat: Catalog, openWor
       if (!short || short.length > LIMITS.short) return { index, error: `Enter a short code of 1 to ${LIMITS.short} characters.` };
       const repairs = (x as Draft<Department>).repairs;
       if (repairs !== undefined && typeof repairs !== 'boolean') return { index, error: 'Choose whether it handles repairs.' };
+      const phones = (x as Draft<Department>).staffPhones;
+      if (phones !== undefined && typeof phones !== 'boolean') return { index, error: 'Choose whether its staff may use shared phones.' };
     }
     if (list === 'requestTypes') {
       const t = x as Draft<RequestType>;

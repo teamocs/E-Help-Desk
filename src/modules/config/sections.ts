@@ -4,7 +4,7 @@ import type { ListDef } from '../../domain/catalog';
 import type { AccountRole } from '../../domain/store';
 import type { Level } from '../access';
 
-export type SectionKind = 'profile' | 'list' | 'hdo' | 'staff' | 'logins' | 'display' | 'feel';
+export type SectionKind = 'profile' | 'list' | 'hdo' | 'staffPhones' | 'staff' | 'logins' | 'display' | 'feel';
 
 export interface Section {
   /** Unique: the list key for a list, else the kind. Also the element id (`cfg-<id>`). */
@@ -48,6 +48,7 @@ export const TITLES: Record<string, string> = {
   bundles: 'Bundles',
   woFindings: 'Work-Order Findings',
   hdo: 'Help-Desk Staff',
+  staffPhones: 'Staff Phones',
   staff: 'Staff (PINs)',
   logins: 'Logins',
   display: 'Display',
@@ -75,6 +76,7 @@ export function sectionsFor(defs: ListDef[], v: ConfigViewer): Section[] {
     { id: 'profile', kind: 'profile', title: TITLES.profile!, edit: v.asAccount && v.role === 'owner' },
     ...lists,
     { id: 'hdo', kind: 'hdo', title: TITLES.hdo!, edit: admin },
+    { id: 'staffPhones', kind: 'staffPhones', title: TITLES.staffPhones!, edit: admin },
   ];
   if (admin) out.push({ id: 'staff', kind: 'staff', title: TITLES.staff!, edit: true });
   if (v.asAccount && v.role === 'owner') out.push({ id: 'logins', kind: 'logins', title: TITLES.logins!, edit: true });

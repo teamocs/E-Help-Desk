@@ -53,6 +53,7 @@ final class Azl_Rest {
 			'/catalog/(?P<list>' . implode( '|', Azl_Catalog::lists() ) . ')',
 			array( 'methods' => 'PUT', 'callback' => array( self::class, 'put_catalog' ), 'permission_callback' => array( self::class, 'can_manage_lists' ) )
 		);
+		register_rest_route( self::NS, '/staff-phones', array( 'methods' => 'PUT', 'callback' => array( self::class, 'put_staff_phones' ), 'permission_callback' => array( self::class, 'can_manage_lists' ) ) );
 		// The hotel profile (Configuration): every desk role reads it, only the hotel owner (and administrators) edit it.
 		register_rest_route( self::NS, '/profile', array( 'methods' => 'GET', 'callback' => array( Azl_Profile::class, 'rest_get' ), 'permission_callback' => $desk ) );
 		register_rest_route( self::NS, '/profile', array( 'methods' => 'PUT', 'callback' => array( Azl_Profile::class, 'rest_put' ), 'permission_callback' => array( self::class, 'can_manage_profile' ) ) );
@@ -143,6 +144,10 @@ final class Azl_Rest {
 					return self::reply( $check );
 				}
 				$id   = strtolower( $id );
+				$off  = Azl_Access::sign_in_refusal( $id ); // right PIN, but Staff phones is off for this person's department
+				if ( null !== $off ) {
+					return self::reply( array( 'ok' => false, 'error' => $off, 'code' => 'azl_phones_off' ) );
+				}
 				$name = Azl_Db::val( 'SELECT name FROM ' . Azl_Db::t( 'staff' ) . ' WHERE id = %s', array( $id ) );
 				$tok  = Azl_Pin::sign_actor( get_current_user_id(), $id );
 				return self::reply( array( 'ok' => true, 'token' => $tok['token'], 'expiresAt' => $tok['expiresAt'], 'staff' => array( 'id' => $id, 'name' => $name ) ) );
@@ -210,6 +215,26 @@ final class Azl_Rest {
 				list( $status, $out ) = Azl_Catalog::save( (string) $request->get_param( 'list' ), $b['items'] ?? null, $b['baseRev'] ?? null );
 				if ( isset( $out['catalog'] ) ) {
 					$out['catalog'] = Azl_Catalog::for_desk( $out['catalog'] ); // saved, or stale: the fresh lists with their defs
+				}
+				return self::reply( $out, $status );
+			}
+		);
+	}
+
+	/**
+	 * PUT /staff-phones {on: bool, baseRev} turns the hotel's Staff phones switch on or off (owner and manager, like the
+	 * lists). Answers like PUT /catalog/<list>.
+	 */
+	public static function put_staff_phones( $request ) {
+		return self::guard(
+			static function () use ( $request ) {
+				$b = self::body( $request );
+				if ( null === $b ) {
+					return self::reply( array( 'ok' => false, 'code' => 'azl_invalid', 'error' => 'Send the setting as JSON.' ), 400 );
+				}
+				list( $status, $out ) = Azl_Catalog::save_staff_phones( $b['on'] ?? null, $b['baseRev'] ?? null );
+				if ( isset( $out['catalog'] ) ) {
+					$out['catalog'] = Azl_Catalog::for_desk( $out['catalog'] );
 				}
 				return self::reply( $out, $status );
 			}

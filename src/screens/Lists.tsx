@@ -313,6 +313,13 @@ function Entry({ list, def, row, index, count, base, usage, error, picking, onPi
         </label>
       )}
 
+      {list === 'departments' && (
+        <label className="le-check">
+          <input type="checkbox" checked={(row as Draft<Department>).staffPhones !== false} onChange={(e) => onPatch({ staffPhones: e.target.checked ? undefined : false } as Partial<Row>)} aria-describedby={`${id}-phones-help`} />
+          <span>Staff may use shared phones <span className="t-foot c2" id={`${id}-phones-help`} style={{ display: 'block' }}>Follows the hotel&apos;s Staff phones setting. Untick to keep this team off shared phones even when it is on.</span></span>
+        </label>
+      )}
+
       {list === 'requestTypes' && (() => {
         const t = row as Draft<RequestType>;
         const icon = REQUEST_ICONS.find((x) => x.name === t.icon);
