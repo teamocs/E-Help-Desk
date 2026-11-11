@@ -5,6 +5,19 @@ import type { State } from '../../domain/types';
 import { hotelMoment } from '../housestatus/time';
 
 export type TripStatus = 'scheduled' | 'en_route' | 'arrived' | 'cancelled';
+/** Azl_Module_Transport::TRANSITIONS (a test compares the two): command => [from statuses, to status (null: unchanged)]. */
+export const TRANSITIONS: Record<string, [TripStatus[], TripStatus | null]> = {
+  logTrip: [[], 'en_route'],
+  scheduleTrip: [[], 'scheduled'],
+  departTrip: [['scheduled'], 'en_route'],
+  arriveTrip: [['en_route'], 'arrived'],
+  cancelTrip: [['scheduled'], 'cancelled'],
+  editTrip: [['scheduled', 'en_route'], null],
+};
+/** May this command run on a record in this status? The server refuses the rest. */
+export const allows = (cmd: keyof typeof TRANSITIONS, st: TripStatus) => TRANSITIONS[cmd][0].includes(st);
+/** A trip that can still depart or arrive. */
+export const moves = (t: { status: TripStatus }) => allows('departTrip', t.status) || allows('arriveTrip', t.status);
 export interface Trip {
   id: string;
   /** "TR-0001"; empty until the server has numbered a trip made on this device. */

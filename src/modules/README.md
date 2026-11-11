@@ -13,3 +13,18 @@ The sidebar, the phone bar, the More sheet and the routing all come from `regist
 ## Server side (PHP)
 
 Create `azalea-ehelpdesk/includes/Modules/<Id>.php` with a class extending `Azl_Module` (see `includes/Modules.php`): `id()`, `schema()` (CREATE TABLE only), `sequences()`, `commands()` (each: `run`, optional `validate`, `ids`, `need`, `scope`, `prior`), `snapshot($who)`, `catalogLists()`, and end the file with `Azl_Modules::register( new ... )`. Progress notes go in `Azl_Updates::add()`. Tables appear on the next request; bump `version()` when you change them. Tests: copy `azalea-ehelpdesk/tests/fixtures/ExampleModule.php` and `tests/cases/modules.php`.
+
+## Status rules (state machines)
+Every record's allowed status changes live in one table: command => [from statuses, to status]. The server enforces it; the desk mirrors it for buttons and optimistic changes; a test fails when the two differ. To change a rule, edit both tables, then run `npm test` and `php azalea-ehelpdesk/tests/run.php`. Do not add a status check as a loose `if`.
+
+| Record | Server (enforces) | Desk (mirror) | Parity test |
+|---|---|---|---|
+| Request items | `Azl_Commands::ITEM_STEPS` (undo: `undo_target`) | `ITEM_STEPS`, `undoTarget` in `src/domain/rules.ts` | `src/modules/transitions.test.ts` |
+| Work orders | `Azl_Module_WorkOrders::TRANSITIONS` | `src/modules/workorders/model.ts` | `workorders.test.tsx` |
+| Cleaning | `Azl_Module_Cleaning::TRANSITIONS` | `src/modules/cleaning/model.ts` | `workorders.test.tsx` |
+| Transport | `Azl_Module_Transport::TRANSITIONS` | `src/modules/transport/model.ts` | `transitions.test.ts` |
+| Inquiries | `Azl_Module_Inquiries::TRANSITIONS` | `src/modules/inquiries/data.ts` | `transitions.test.ts` |
+| House Status | `Azl_Module_HouseStatus::TRANSITIONS` | `src/modules/housestatus/model.ts` | `transitions.test.ts` |
+| Crisis cases | `Azl_Module_Crisis::TRANSITIONS` | `src/modules/crisis/model.ts` | `transitions.test.ts` |
+
+Not tabled (one step each, or not status-driven): Reminders (pending to completed), safety alerts (active, downgraded, resolved), item closing and transfer (`finish`, `transfer`, `escalate` in `Commands.php`).

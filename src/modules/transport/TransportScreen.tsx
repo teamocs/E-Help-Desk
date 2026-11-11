@@ -5,7 +5,7 @@ import { Sheet } from '../../ui/sheet';
 import { Field, useModuleLevel } from '../housestatus/shared';
 import { addDays, clock, dayName, hotelDate, hotelMoment, hotelTime, when } from '../housestatus/time';
 import '../housestatus/housestatus.css';
-import { FILTERS, STATUS_LABEL, TONE, arriveTrip, cancelTrip, checkTrip, clean, departTrip, editTrip, isDriver, logTrip, scheduleTrip, sortTrips, tripsOf, vehiclesOf, visible, type Filter, type Problems, type Trip, type TripInput, type Vehicle } from './model';
+import { FILTERS, STATUS_LABEL, TONE, allows, arriveTrip, cancelTrip, checkTrip, clean, departTrip, editTrip, isDriver, logTrip, moves, scheduleTrip, sortTrips, tripsOf, vehiclesOf, visible, type Filter, type Problems, type Trip, type TripInput, type Vehicle } from './model';
 
 type Dialog = { kind: 'log' | 'schedule' } | { kind: 'edit'; trip: Trip } | null;
 
@@ -28,7 +28,7 @@ export function TransportScreen() {
   const out = count('en_route'), due = count('scheduled');
   const can = (t: Trip) => desk || (level === 'own' && isDriver(t, me?.name));
   const act = (t: Trip) => {
-    if (t.status === 'scheduled') { departTrip(t.id); toast(`${t.no || 'Trip'} departed`, 'success'); }
+    if (allows('departTrip', t.status)) { departTrip(t.id); toast(`${t.no || 'Trip'} departed`, 'success'); }
     else { arriveTrip(t.id); toast(`${t.no || 'Trip'} arrived`, 'success'); }
   };
   const detailTrip = trips.find((t) => t.id === detail);
@@ -68,7 +68,7 @@ export function TransportScreen() {
                   <td className="tnum">{leftAt(t, now)}</td>
                   <td className="tnum">{t.arrAt ? when(t.arrAt, now) : '—'}</td>
                   <td><Pill tone={TONE[t.status]}>{STATUS_LABEL[t.status]}</Pill></td>
-                  <td>{(t.status === 'scheduled' || t.status === 'en_route') && can(t) && <Button size="sm" variant={t.status === 'scheduled' ? 'tint' : 'fill'} aria-label={`${t.status === 'scheduled' ? 'Depart' : 'Mark arrived'} ${t.no}`} onClick={() => act(t)}>{t.status === 'scheduled' ? 'Depart' : 'Arrived'}</Button>}</td>
+                  <td>{moves(t) && can(t) && <Button size="sm" variant={t.status === 'scheduled' ? 'tint' : 'fill'} aria-label={`${t.status === 'scheduled' ? 'Depart' : 'Mark arrived'} ${t.no}`} onClick={() => act(t)}>{t.status === 'scheduled' ? 'Depart' : 'Arrived'}</Button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -91,7 +91,7 @@ export function TransportScreen() {
                   <dt>{t.depAt ? 'Departed' : 'Due'}</dt><dd className="tnum">{leftAt(t, now)}</dd>
                   {t.arrAt && <><dt>Arrived</dt><dd className="tnum">{when(t.arrAt, now)}</dd></>}
                 </dl>
-                {(t.status === 'scheduled' || t.status === 'en_route') && can(t) && (
+                {moves(t) && can(t) && (
                   <div className="hs-actions"><Button size="sm" variant={t.status === 'scheduled' ? 'tint' : 'fill'} aria-label={`${t.status === 'scheduled' ? 'Depart' : 'Mark arrived'} ${t.no}`} onClick={() => act(t)}>{t.status === 'scheduled' ? 'Depart' : 'Arrived'}</Button></div>
                 )}
               </article>
@@ -113,7 +113,7 @@ export function TransportScreen() {
 function TripDetail({ trip: t, now, desk, canMove, onMove, onEdit, onClose }: { trip: Trip; now: number; desk: boolean; canMove: boolean; onMove: () => void; onEdit: () => void; onClose: () => void }) {
   const [sure, setSure] = useState(false);
   const rows: [string, string][] = [['Status', STATUS_LABEL[t.status]], ['Destination', t.dest], ['Driver', t.driver || '—'], ['Purpose', t.purpose || '—'], ['Passengers', t.passengers || '—'], [t.depAt ? 'Departed' : 'Due', leftAt(t, now)], ['Arrived', t.arrAt ? when(t.arrAt, now) : '—']];
-  const live = t.status === 'scheduled' || t.status === 'en_route';
+  const live = moves(t);
   return (
     <div>
       <dl className="tr-card" style={{ gridTemplateColumns: 'auto 1fr', marginTop: 4 }}>
@@ -127,8 +127,8 @@ function TripDetail({ trip: t, now, desk, canMove, onMove, onEdit, onClose }: { 
       ) : (
         <div className="hs-actions" style={{ marginTop: 16 }}>
           {live && canMove && <Button onClick={onMove}>{t.status === 'scheduled' ? 'Depart' : 'Arrived'}</Button>}
-          {live && desk && <Button variant="gray" onClick={onEdit}>Edit</Button>}
-          {t.status === 'scheduled' && desk && <Button variant="bad" onClick={() => setSure(true)}>Cancel trip</Button>}
+          {allows('editTrip', t.status) && desk && <Button variant="gray" onClick={onEdit}>Edit</Button>}
+          {allows('cancelTrip', t.status) && desk && <Button variant="bad" onClick={() => setSure(true)}>Cancel trip</Button>}
           <Button variant="plain" onClick={onClose}>Close</Button>
         </div>
       )}

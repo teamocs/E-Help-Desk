@@ -6,7 +6,7 @@ import { Button, Empty, Icon, Pill, Screen } from '../../ui/kit';
 import { Sheet } from '../../ui/sheet';
 import { MATRIX, kindOfStaffRole, levelOf, type Level, type Matrix } from '../access';
 import {
-  callTime, casesOf, closeCase, codeLabel, crisisUI, editCase, emptyFields, entryOf, fieldsOf, isOpenCase, labelOf, linkAlert, listOf, logCase,
+  allows, callTime, casesOf, closeCase, codeLabel, crisisUI, editCase, emptyFields, entryOf, fieldsOf, isOpenCase, labelOf, linkAlert, listOf, logCase,
   monitorCase, openCase, openCaseFromAlert, problemOf, recordCase911, reopenCase, updateCase, when, whereText,
   type CaseFields, type CaseStatus, type CrisisCase, type ListEntry, type ListKey,
 } from './model';
@@ -316,12 +316,12 @@ function CaseView({ c, level, setMode }: { c: CrisisCase; level: Level; setMode:
 
       {canChange && (
         <div className="cr-actions">
-          {c.status !== 'resolved' && <Button size="sm" icon="plus" onClick={() => setMode('update')}>Update</Button>}
-          {c.status === 'active' && <Button size="sm" variant="gray" onClick={() => setMode('monitor')}>Monitor</Button>}
-          {c.status !== 'resolved' && (canClose
+          {allows('updateCrisis', c.status) && <Button size="sm" icon="plus" onClick={() => setMode('update')}>Update</Button>}
+          {allows('monitorCrisis', c.status) && <Button size="sm" variant="gray" onClick={() => setMode('monitor')}>Monitor</Button>}
+          {allows('closeCrisis', c.status) && (canClose
             ? <Button size="sm" variant="gray" onClick={() => setMode('close')}>Close</Button>
             : <Button size="sm" variant="gray" disabled title="A supervisor or manager closes a case">Close (supervisor or manager)</Button>)}
-          {c.status === 'resolved' && <Button size="sm" variant="gray" icon="undo" onClick={() => { reopenCase(c.id); toast(`${c.no} reopened, under monitoring.`, 'success'); }}>Reopen</Button>}
+          {allows('reopenCrisis', c.status) && <Button size="sm" variant="gray" icon="undo" onClick={() => { reopenCase(c.id); toast(`${c.no} reopened, under monitoring.`, 'success'); }}>Reopen</Button>}
           <Button size="sm" variant="gray" onClick={() => setMode('edit')}>Edit</Button>
         </div>
       )}

@@ -30,6 +30,14 @@ final class Azl_Module_Crisis extends Azl_Module {
 
 	const ENTITY       = 'crisis';
 	const STATUSES     = array( 'active', 'monitoring', 'resolved' );
+	/** command => [from statuses, to status (null: unchanged, or chosen in the form)]. The desk mirrors it; a test compares. */
+	const TRANSITIONS = array(
+		'logCrisis'     => array( array(), 'active' ),
+		'updateCrisis'  => array( array( 'active', 'monitoring' ), null ),
+		'monitorCrisis' => array( array( 'active' ), 'monitoring' ),
+		'closeCrisis'   => array( array( 'active', 'monitoring' ), 'resolved' ),
+		'reopenCrisis'  => array( array( 'resolved' ), 'monitoring' ),
+	);
 	const CLOSED_DAYS  = 30;
 	const NAME_MAX     = 120;
 	const PLACE_MAX    = 80;
@@ -327,7 +335,7 @@ final class Azl_Module_Crisis extends Azl_Module {
 				'id'          => $id,
 				'cr_no'       => $n,
 				'occurred_at' => $ctx->now(),
-				'status'      => 'active',
+				'status'      => self::TRANSITIONS['logCrisis'][1],
 				'incident_id' => null === $inc ? null : $inc['id'],
 				'logged_by'   => $ctx->actor(),
 				'op_id'       => $ctx->op(),
@@ -342,12 +350,13 @@ final class Azl_Module_Crisis extends Azl_Module {
 	}
 
 	/** Loads the case for a change; null with the refusal when it is unknown or (for $open) closed. */
-	private static function target( array $cmd, bool $open, ?array &$row ): ?array {
+	private static function target( array $cmd, ?string $type, ?array &$row ): ?array {
 		$row = self::load( $cmd['caseId'] );
 		if ( null === $row ) {
 			return Azl_Commands::fail( self::NO_CASE );
 		}
-		return $open && 'resolved' === $row['status'] ? Azl_Commands::fail( self::CLOSED ) : null;
+		// $type: a command that needs an open case (its from-statuses in TRANSITIONS); null: any status will do.
+		return null !== $type && ! in_array( $row['status'], self::TRANSITIONS[ $type ][0], true ) ? Azl_Commands::fail( self::CLOSED ) : null;
 	}
 
 	/** Claims the op, writes the columns and adds one line to the case's updates. */
@@ -363,44 +372,44 @@ final class Azl_Module_Crisis extends Azl_Module {
 	}
 
 	public function update( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::target( $cmd, true, $row );
+		$refused = self::target( $cmd, 'updateCrisis', $row );
 		return $refused ?? self::write( $ctx, $cmd, 'Update added', array(), Azl_Commands::para( $cmd['text'] ) );
 	}
 
 	public function monitor( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::target( $cmd, true, $row );
+		$refused = self::target( $cmd, 'updateCrisis', $row ); // a closed case says so; the monitoring check follows
 		if ( null !== $refused ) {
 			return $refused;
 		}
-		if ( 'active' !== $row['status'] ) {
+		if ( ! in_array( $row['status'], self::TRANSITIONS['monitorCrisis'][0], true ) ) {
 			return Azl_Commands::fail( 'This case is already being monitored' );
 		}
-		return self::write( $ctx, $cmd, 'Monitoring', array( 'status' => 'monitoring' ), 'Monitoring: ' . Azl_Commands::para( $cmd['text'] ) );
+		return self::write( $ctx, $cmd, 'Monitoring', array( 'status' => self::TRANSITIONS['monitorCrisis'][1] ), 'Monitoring: ' . Azl_Commands::para( $cmd['text'] ) );
 	}
 
 	public function close( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::target( $cmd, true, $row );
+		$refused = self::target( $cmd, 'closeCrisis', $row );
 		if ( null !== $refused ) {
 			return $refused;
 		}
-		$res = Azl_Commands::para( $cmd['resolution'] );
-		return self::write( $ctx, $cmd, 'Closed', array( 'status' => 'resolved', 'resolution' => $res, 'resolved_at' => $ctx->now() ), 'Closed: ' . $res );
+		$res =Azl_Commands::para( $cmd['resolution'] );
+		return self::write( $ctx, $cmd, 'Closed', array( 'status' => self::TRANSITIONS['closeCrisis'][1], 'resolution' => $res, 'resolved_at' => $ctx->now() ), 'Closed: ' . $res );
 	}
 
 	public function reopen( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::target( $cmd, false, $row );
+		$refused = self::target( $cmd, null, $row );
 		if ( null !== $refused ) {
 			return $refused;
 		}
-		if ( 'resolved' !== $row['status'] ) {
+		if ( ! in_array( $row['status'], self::TRANSITIONS['reopenCrisis'][0], true ) ) {
 			return Azl_Commands::fail( 'This case is still open' );
 		}
 		// The old resolution stays in the updates ("Closed: ..."); the case is open again, under monitoring.
-		return self::write( $ctx, $cmd, 'Reopened', array( 'status' => 'monitoring', 'resolution' => null, 'resolved_at' => null ), 'Reopened' );
+		return self::write( $ctx, $cmd, 'Reopened', array( 'status' => self::TRANSITIONS['reopenCrisis'][1], 'resolution' => null, 'resolved_at' => null ), 'Reopened' );
 	}
 
 	public function edit( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::target( $cmd, false, $row );
+		$refused = self::target( $cmd, null, $row );
 		if ( null !== $refused ) {
 			return $refused;
 		}
@@ -437,7 +446,7 @@ final class Azl_Module_Crisis extends Azl_Module {
 	}
 
 	public function link( array $cmd, Azl_Commands $ctx ): array {
-		$refused = self::target( $cmd, false, $row );
+		$refused = self::target( $cmd, null, $row );
 		if ( null !== $refused ) {
 			return $refused;
 		}
@@ -457,7 +466,7 @@ final class Azl_Module_Crisis extends Azl_Module {
 		if ( null === $at ) {
 			return Azl_Commands::fail( 'The call time is not a valid date' );
 		}
-		$refused = self::target( $cmd, false, $row );
+		$refused = self::target( $cmd, null, $row );
 		if ( null !== $refused ) {
 			return $refused;
 		}

@@ -49,6 +49,8 @@ export function detectSafety(text: string): Hazard | null {
 const CLOSED = ['done', 'transferred', 'escalated', 'cant_do', 'duplicate', 'cancelled'];
 export const isClosed = (it: Item) => CLOSED.includes(it.status);
 export const isOpen = (it: Item) => !isClosed(it);
+/** Azl_Commands::ITEM_STEPS (a test compares the two): step => the statuses an item may be in for it. */
+export const ITEM_STEPS: Record<'relay' | 'onSite' | 'hold' | 'resume', ItemStatus[]> = { relay: ['new'], onSite: ['new', 'relayed'], hold: ['relayed', 'on_site'], resume: ['on_hold'] };
 
 export function isBlocked(it: Item, items: Record<string, Item>): boolean {
   if (!it.dependsOn) return false;

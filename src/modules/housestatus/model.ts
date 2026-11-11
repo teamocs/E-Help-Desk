@@ -4,6 +4,14 @@ import { moduleData, runModuleCommand } from '../../domain/store';
 import type { State } from '../../domain/types';
 
 export type HsStatus = 'monitoring' | 'pending' | 'closed';
+/** Azl_Module_HouseStatus::TRANSITIONS (a test compares the two): command => [from statuses, to status (null: unchanged)]. */
+export const TRANSITIONS: Record<string, [HsStatus[], HsStatus | null]> = {
+  updateHouse: [['monitoring', 'pending'], null],
+  closeHouse: [['monitoring', 'pending'], 'closed'],
+  reopenHouse: [['closed'], 'monitoring'],
+};
+/** May this command run on a record in this status? The server refuses the rest. */
+export const allows = (cmd: keyof typeof TRANSITIONS, st: HsStatus) => TRANSITIONS[cmd][0].includes(st);
 export interface HsUpdate { at: number; by: string; text: string }
 export interface HsLog {
   id: string;

@@ -23,6 +23,15 @@ final class Azl_Module_Transport extends Azl_Module {
 
 	const TZ         = 'Asia/Manila';
 	const STATUSES   = array( 'scheduled', 'en_route', 'arrived', 'cancelled' );
+	/** command => [from statuses, to status (null: unchanged, or chosen in the form)]. The desk mirrors it; a test compares. */
+	const TRANSITIONS = array(
+		'logTrip'      => array( array(), 'en_route' ),
+		'scheduleTrip' => array( array(), 'scheduled' ),
+		'departTrip'   => array( array( 'scheduled' ), 'en_route' ),
+		'arriveTrip'   => array( array( 'en_route' ), 'arrived' ),
+		'cancelTrip'   => array( array( 'scheduled' ), 'cancelled' ),
+		'editTrip'     => array( array( 'scheduled', 'en_route' ), null ),
+	);
 	/** Arrived and cancelled trips stay in the snapshot this long; trips still to run or on the road always do. */
 	const DONE_DAYS  = 14;
 	const CAP        = 300;
@@ -223,15 +232,16 @@ final class Azl_Module_Transport extends Azl_Module {
 	}
 
 	public function log( array $cmd, Azl_Commands $ctx ): array {
-		return $this->create( $cmd, $ctx, 'en_route', null, 'Logged' );
+		return $this->create( $cmd, $ctx, self::TRANSITIONS['logTrip'][1], null, 'Logged' );
 	}
 
 	public function schedule( array $cmd, Azl_Commands $ctx ): array {
-		return $this->create( $cmd, $ctx, 'scheduled', self::sched_at( $cmd['date'], $cmd['time'] ), 'Scheduled' );
+		return $this->create( $cmd, $ctx, self::TRANSITIONS['scheduleTrip'][1], self::sched_at( $cmd['date'], $cmd['time'] ), 'Scheduled' );
 	}
 
 	/** Moves a trip from one status to another, stamping a time column. */
-	private function step( array $cmd, Azl_Commands $ctx, string $from, string $to, string $col, string $what, array $wrong ): array {
+	private function step( array $cmd, Azl_Commands $ctx, string $type, string $col, string $what, array $wrong ): array {
+		list( $from, $to ) = self::TRANSITIONS[ $type ];
 		$trip = self::locked( $cmd['tripId'] );
 		if ( null === $trip ) {
 			return Azl_Commands::fail( 'Unknown trip' );
@@ -240,7 +250,7 @@ final class Azl_Module_Transport extends Azl_Module {
 		if ( null !== $refused ) {
 			return Azl_Commands::fail( $refused );
 		}
-		if ( $from !== $trip['status'] ) {
+		if ( ! in_array( $trip['status'], $from, true ) ) {
 			return Azl_Commands::fail( $wrong[ $trip['status'] ] );
 		}
 		if ( ! $ctx->claim( 'trip', $trip['id'], $what ) ) {
@@ -254,8 +264,7 @@ final class Azl_Module_Transport extends Azl_Module {
 		return $this->step(
 			$cmd,
 			$ctx,
-			'scheduled',
-			'en_route',
+			'departTrip',
 			'dep_at',
 			'Departed',
 			array( 'en_route' => 'This trip has already left.', 'arrived' => 'This trip has already arrived.', 'cancelled' => 'This trip was cancelled.' )
@@ -266,8 +275,7 @@ final class Azl_Module_Transport extends Azl_Module {
 		return $this->step(
 			$cmd,
 			$ctx,
-			'en_route',
-			'arrived',
+			'arriveTrip',
 			'arr_at',
 			'Arrived',
 			array( 'scheduled' => 'This trip has not left yet. Depart it first.', 'arrived' => 'This trip has already arrived.', 'cancelled' => 'This trip was cancelled.' )
@@ -279,13 +287,13 @@ final class Azl_Module_Transport extends Azl_Module {
 		if ( null === $trip ) {
 			return Azl_Commands::fail( 'Unknown trip' );
 		}
-		if ( 'scheduled' !== $trip['status'] ) {
+		if ( ! in_array( $trip['status'], self::TRANSITIONS['cancelTrip'][0], true ) ) {
 			return Azl_Commands::fail( 'Only a scheduled trip can be cancelled.' );
 		}
 		if ( ! $ctx->claim( 'trip', $trip['id'], 'Cancelled' ) ) {
 			return $ctx->replay( $cmd );
 		}
-		Azl_Db::update( 'trips', array( 'status' => 'cancelled', 'updated_at' => $ctx->now() ), array( 'id' => $trip['id'] ) );
+		Azl_Db::update( 'trips', array( 'status' => self::TRANSITIONS['cancelTrip'][1], 'updated_at' => $ctx->now() ), array( 'id' => $trip['id'] ) );
 		return Azl_Commands::ok();
 	}
 
@@ -294,7 +302,7 @@ final class Azl_Module_Transport extends Azl_Module {
 		if ( null === $trip ) {
 			return Azl_Commands::fail( 'Unknown trip' );
 		}
-		if ( ! in_array( $trip['status'], array( 'scheduled', 'en_route' ), true ) ) {
+		if ( ! in_array( $trip['status'], self::TRANSITIONS['editTrip'][0], true ) ) {
 			return Azl_Commands::fail( 'A trip that has arrived or was cancelled cannot be changed.' );
 		}
 		// The vehicle may stay as it is even when it has since been removed from the list.

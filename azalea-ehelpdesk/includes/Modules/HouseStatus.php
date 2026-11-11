@@ -16,6 +16,12 @@ defined( 'ABSPATH' ) || exit;
 final class Azl_Module_HouseStatus extends Azl_Module {
 
 	const STATUSES = array( 'monitoring', 'pending', 'closed' );
+	/** command => [from statuses, to status (null: unchanged, or chosen in the form)]. The desk mirrors it; a test compares. */
+	const TRANSITIONS = array(
+		'updateHouse' => array( array( 'monitoring', 'pending' ), null ),
+		'closeHouse'  => array( array( 'monitoring', 'pending' ), 'closed' ),
+		'reopenHouse' => array( array( 'closed' ), 'monitoring' ),
+	); // logHouse and editHouse take the status from the form (any of STATUSES), so they have no row.
 	/** Closed logs stay in the snapshot this long after their last change; logs that are not closed always do. */
 	const CLOSED_DAYS = 30;
 	const CLOSED_CAP  = 200;
@@ -134,7 +140,7 @@ final class Azl_Module_HouseStatus extends Azl_Module {
 		if ( null === $log ) {
 			return Azl_Commands::fail( 'Unknown log' );
 		}
-		if ( 'closed' === $log['status'] ) {
+		if ( ! in_array( $log['status'], self::TRANSITIONS['updateHouse'][0], true ) ) {
 			return Azl_Commands::fail( 'This log is closed. Reopen it to add an update.' );
 		}
 		if ( ! $ctx->claim( 'house_log', $log['id'], 'Update added' ) ) {
@@ -150,7 +156,7 @@ final class Azl_Module_HouseStatus extends Azl_Module {
 		if ( null === $log ) {
 			return Azl_Commands::fail( 'Unknown log' );
 		}
-		if ( 'closed' === $log['status'] ) {
+		if ( ! in_array( $log['status'], self::TRANSITIONS['closeHouse'][0], true ) ) {
 			return Azl_Commands::fail( 'This log is already closed.' );
 		}
 		if ( ! $ctx->claim( 'house_log', $log['id'], 'Closed' ) ) {
@@ -158,7 +164,7 @@ final class Azl_Module_HouseStatus extends Azl_Module {
 		}
 		$note = Azl_Commands::para( $cmd['note'] ?? '' );
 		Azl_Updates::add( 'house_log', $log['id'], '' === $note ? 'Closed' : 'Closed: ' . $note, $ctx->actor(), $ctx->op(), $ctx->now() );
-		Azl_Db::update( 'house_logs', array( 'status' => 'closed', 'closed_at' => $ctx->now(), 'updated_at' => $ctx->now() ), array( 'id' => $log['id'] ) );
+		Azl_Db::update( 'house_logs', array( 'status' => self::TRANSITIONS['closeHouse'][1], 'closed_at' => $ctx->now(), 'updated_at' => $ctx->now() ), array( 'id' => $log['id'] ) );
 		return Azl_Commands::ok();
 	}
 
@@ -167,14 +173,14 @@ final class Azl_Module_HouseStatus extends Azl_Module {
 		if ( null === $log ) {
 			return Azl_Commands::fail( 'Unknown log' );
 		}
-		if ( 'closed' !== $log['status'] ) {
+		if ( ! in_array( $log['status'], self::TRANSITIONS['reopenHouse'][0], true ) ) {
 			return Azl_Commands::fail( 'This log is not closed.' );
 		}
 		if ( ! $ctx->claim( 'house_log', $log['id'], 'Reopened' ) ) {
 			return $ctx->replay( $cmd );
 		}
 		Azl_Updates::add( 'house_log', $log['id'], 'Reopened', $ctx->actor(), $ctx->op(), $ctx->now() );
-		Azl_Db::exec( 'UPDATE ' . Azl_Db::t( 'house_logs' ) . " SET status = 'monitoring', closed_at = NULL, updated_at = %d WHERE id = %s", array( $ctx->now(), $log['id'] ) );
+		Azl_Db::exec( 'UPDATE ' . Azl_Db::t( 'house_logs' ) . ' SET status = %s, closed_at = NULL, updated_at = %d WHERE id = %s', array( self::TRANSITIONS['reopenHouse'][1], $ctx->now(), $log['id'] ) );
 		return Azl_Commands::ok();
 	}
 

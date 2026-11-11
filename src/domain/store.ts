@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import { buildSeed } from './seed';
-import { HAZARDS, STAFF, detectSafety, hubUp, isOpen, pad, undoTarget } from './rules';
+import { HAZARDS, ITEM_STEPS, STAFF, detectSafety, hubUp, isOpen, pad, undoTarget } from './rules';
 import { SEED_CATALOG, canEscalate, deptLabel, isCatalog, type Catalog } from './catalog';
 import { haptic, hapticsConfig, tone } from '../lib/haptics';
 import type { Hazard, HoldReason, Item, Incident, Prefs, Request, State, Toast, WorkOrder } from './types';
@@ -346,19 +346,19 @@ function patchItem(id: string, label: string, fn: (it: Item, now: number) => Par
 const firstOf = (dept: Item['dept'], s: State) => s.staff.find((p) => p.dept === dept && p.onShift && p.role === 'staff')?.id;
 
 export const relay = (id: string) => {
-  const ok = patchItem(id, 'Relayed', (it, now) => (it.status === 'new' ? { status: 'relayed', prevStatus: it.status, ackAt: now, relayedBy: meStaff(app.get()), assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
+  const ok = patchItem(id, 'Relayed', (it, now) => (ITEM_STEPS.relay.includes(it.status) ? { status: 'relayed', prevStatus: it.status, ackAt: now, relayedBy: meStaff(app.get()), assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
   if (ok) send({ type: 'relay', itemId: id });
 };
 export const onSite = (id: string) => {
-  const ok = patchItem(id, 'On site', (it, now) => (['new', 'relayed'].includes(it.status) ? { status: 'on_site', prevStatus: it.status, ackAt: it.ackAt ?? now, onSiteAt: now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
+  const ok = patchItem(id, 'On site', (it, now) => (ITEM_STEPS.onSite.includes(it.status) ? { status: 'on_site', prevStatus: it.status, ackAt: it.ackAt ?? now, onSiteAt: now, assignee: it.assignee ?? firstOf(it.dept, app.get()) } : null));
   if (ok) send({ type: 'onSite', itemId: id });
 };
 export const hold = (id: string, reason: HoldReason) => {
-  const ok = patchItem(id, 'On hold', (it, now) => (['relayed', 'on_site'].includes(it.status) ? { status: 'on_hold', prevStatus: it.status, holdReason: reason, holdSince: now, ackAt: it.ackAt ?? now } : null));
+  const ok = patchItem(id, 'On hold', (it, now) => (ITEM_STEPS.hold.includes(it.status) ? { status: 'on_hold', prevStatus: it.status, holdReason: reason, holdSince: now, ackAt: it.ackAt ?? now } : null));
   if (ok) send({ type: 'hold', itemId: id, reason });
 };
 export const resume = (id: string) => {
-  const ok = patchItem(id, 'Resumed', (it, now) => (it.status === 'on_hold' ? { status: 'on_site', prevStatus: it.status, heldMs: it.heldMs + (now - (it.holdSince ?? now)), holdSince: undefined, holdReason: undefined } : null));
+  const ok = patchItem(id, 'Resumed', (it, now) => (ITEM_STEPS.resume.includes(it.status) ? { status: 'on_site', prevStatus: it.status, heldMs: it.heldMs + (now - (it.holdSince ?? now)), holdSince: undefined, holdReason: undefined } : null));
   if (ok) send({ type: 'resume', itemId: id });
 };
 
@@ -609,40 +609,6 @@ export function undoEscalate(itemId: string) {
   }, [itemId]);
   if (applied) send({ type: 'undoEscalate', itemId });
 }
-
-/* ---------- work orders ---------- */
-function patchWo(id: string, label: string, fn: (w: WorkOrder, s: State) => Partial<WorkOrder> | null, after?: (s: State, w: WorkOrder) => State): boolean {
-  let applied = false;
-  commit(label, (s) => {
-    const w = s.wos.find((x) => x.id === id);
-    if (!w) return s;
-    const p = fn(w, s);
-    if (!p) return s;
-    applied = true;
-    const nw = { ...w, ...p, audit: [...w.audit, ev(s, label)] };
-    const n = { ...s, wos: s.wos.map((x) => (x.id === id ? nw : x)) };
-    return after ? after(n, nw) : n;
-  }, [id]);
-  return applied;
-}
-export const assessWo = (id: string, a: { assessment: string; assignType: 'inhouse' | 'outsource'; contractor?: string; estCost: number }) => {
-  if (patchWo(id, 'Assessed', (w) => (w.status === 'reported' ? { ...a, status: 'assessed' } : null))) send({ type: 'assessWo', woId: id, ...a });
-};
-export const startWo = (id: string) => {
-  if (patchWo(id, 'Work started', (w) => (['assessed', 'on_hold'].includes(w.status) ? { status: 'in_progress' } : null))) send({ type: 'startWo', woId: id });
-};
-export const holdWo = (id: string) => {
-  if (patchWo(id, 'Put on hold', (w) => (w.status === 'in_progress' ? { status: 'on_hold' } : null))) send({ type: 'holdWo', woId: id });
-};
-export const completeWo = (id: string, actualCost: number) => {
-  const ok = patchWo(id, 'Completed', (w) => (['in_progress', 'on_hold', 'assessed'].includes(w.status) ? { status: 'done', actualCost } : null), (s, w) =>
-    w.srcItemId && s.items[w.srcItemId]?.status === 'escalated' ? closeItem(s, w.srcItemId, 'done', `Closed by ${w.no}`) : s,
-  );
-  if (ok) send({ type: 'completeWo', woId: id, actualCost });
-};
-export const reopenWo = (id: string) => {
-  if (patchWo(id, 'Reopened', (w) => (w.status === 'done' ? { status: 'in_progress', actualCost: undefined } : null))) send({ type: 'reopenWo', woId: id });
-};
 
 /* ---------- cleaning ---------- */
 export function cleanSet(id: string, status: State['cleaning'][number]['status']) {

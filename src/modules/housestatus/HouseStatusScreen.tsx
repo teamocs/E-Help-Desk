@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { myStaff, toast, useApp } from '../../domain/store';
 import { Button, Empty, Pill, Screen } from '../../ui/kit';
 import { Sheet } from '../../ui/sheet';
-import { FILTERS, STATUS_LABEL, checkClose, checkLog, checkUpdate, clean, closeHouse, editHouse, isNotClosed, logHouse, logsOf, reopenHouse, updateHouse, visible, type Filter, type HsLog, type HsStatus, type Problems } from './model';
+import { FILTERS, STATUS_LABEL, allows, checkClose, checkLog, checkUpdate, clean, closeHouse, editHouse, isNotClosed, logHouse, logsOf, reopenHouse, updateHouse, visible, type Filter, type HsLog, type HsStatus, type Problems } from './model';
 import { Field, nameOf, useModuleLevel } from './shared';
 import { stamp } from './time';
 import './housestatus.css';
@@ -73,10 +73,10 @@ function Card({ log: l, by, staff, canChange, onDialog }: { log: HsLog; by: stri
       )}
       {canChange && (
         <div className="hs-actions">
-          {l.status !== 'closed' && <Button size="sm" variant="tint" aria-label={label('Add an update to')} onClick={() => onDialog('update')}>+ Update</Button>}
-          {l.status !== 'closed' && <Button size="sm" variant="gray" aria-label={label('Close')} onClick={() => onDialog('close')}>Close</Button>}
+          {allows('updateHouse', l.status) && <Button size="sm" variant="tint" aria-label={label('Add an update to')} onClick={() => onDialog('update')}>+ Update</Button>}
+          {allows('closeHouse', l.status) && <Button size="sm" variant="gray" aria-label={label('Close')} onClick={() => onDialog('close')}>Close</Button>}
           <Button size="sm" variant="gray" aria-label={label('Edit')} onClick={() => onDialog('edit')}>Edit</Button>
-          {l.status === 'closed' && <Button size="sm" variant="bad" aria-label={label('Reopen')} onClick={() => { reopenHouse(l.id); toast(`${l.no} reopened`, 'success'); }}>Reopen</Button>}
+          {allows('reopenHouse', l.status) && <Button size="sm" variant="bad" aria-label={label('Reopen')} onClick={() => { reopenHouse(l.id); toast(`${l.no} reopened`, 'success'); }}>Reopen</Button>}
         </div>
       )}
     </article>

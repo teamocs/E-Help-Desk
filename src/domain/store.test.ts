@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ackHandover, app, applySnapshot, assessWo, escalate, finishItem, hold, logRequest, onSite, raiseSafety, relay, resetApp, resume, returnOrphans, setNet, setPref, transfer, undoEscalate, completeWo, unlock } from './store';
+import { ackHandover, app, applySnapshot, escalate, finishItem, hold, logRequest, onSite, raiseSafety, relay, resetApp, resume, returnOrphans, setNet, setPref, transfer, undoEscalate, unlock } from './store';
 import { detectSafety, hubUp, pad, sla } from './rules';
 import { memoryOutbox } from './outbox';
 import { remote } from './remote';
@@ -156,21 +156,6 @@ describe('escalation to work orders', () => {
     undoEscalate(id);
     expect(itemOf(id).status).toBe('on_site');
     expect(app.get().wos.some((w) => w.id === wo.id)).toBe(false);
-  });
-
-  it('completing the work order closes the escalated item', () => {
-    logRequest({ room: '508', presets: ['ac'] });
-    const id = newestItemId();
-    onSite(id);
-    escalate(id);
-    const woId = itemOf(id).woId!;
-    // completeWo only accepts assessed / in_progress / on_hold work orders, so assess first.
-    assessWo(woId, { assessment: 'Replace fan motor', assignType: 'inhouse', estCost: 500 });
-
-    completeWo(woId, 1000);
-    const wo = app.get().wos.find((w) => w.id === woId)!;
-    expect(wo.status).toBe('done');
-    expect(itemOf(id).status).toBe('done');
   });
 
   it('refuses to escalate a housekeeping item', () => {

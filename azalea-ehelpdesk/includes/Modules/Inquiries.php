@@ -20,6 +20,13 @@ final class Azl_Module_Inquiries extends Azl_Module {
 	const TYPES       = array( 'in_house', 'external', 'checked_out' );
 	/** Closed within this long after logging: the quick-close flag (6 minutes, as the prototype). */
 	const QUICK_MS    = 360000;
+	/** command => [from statuses, to status (null: unchanged, or chosen in the form)]. The desk mirrors it; a test compares. */
+	const TRANSITIONS = array(
+		'logInquiry'    => array( array(), 'active' ),
+		'noteInquiry'   => array( array( 'active' ), 'noted' ),
+		'closeInquiry'  => array( array( 'active', 'noted' ), 'done' ),
+		'reopenInquiry' => array( array( 'noted', 'done' ), 'active' ),
+	);
 	/** The snapshot carries every open inquiry plus the ones changed in this many days. */
 	const WINDOW_DAYS = 14;
 	const CAP         = 500;
@@ -71,19 +78,19 @@ final class Azl_Module_Inquiries extends Azl_Module {
 			'noteInquiry'    => array(
 				'ids' => array( 'inquiryId' ),
 				'run' => function ( array $cmd, Azl_Commands $ctx ): array {
-					return $this->step( $cmd, $ctx, array( 'active' ), 'noted', 'Noted', 'Already noted or closed' );
+					return $this->step( $cmd, $ctx, 'noteInquiry', 'Noted', 'Already noted or closed' );
 				},
 			),
 			'closeInquiry'   => array(
 				'ids' => array( 'inquiryId' ),
 				'run' => function ( array $cmd, Azl_Commands $ctx ): array {
-					return $this->step( $cmd, $ctx, array( 'active', 'noted' ), 'done', 'Closed', 'Already closed' );
+					return $this->step( $cmd, $ctx, 'closeInquiry', 'Closed', 'Already closed' );
 				},
 			),
 			'reopenInquiry'  => array(
 				'ids' => array( 'inquiryId' ),
 				'run' => function ( array $cmd, Azl_Commands $ctx ): array {
-					return $this->step( $cmd, $ctx, array( 'noted', 'done' ), 'active', 'Reopened', 'Already open' );
+					return $this->step( $cmd, $ctx, 'reopenInquiry', 'Reopened', 'Already open' );
 				},
 			),
 		);
@@ -152,7 +159,7 @@ final class Azl_Module_Inquiries extends Azl_Module {
 				'room'         => '' === $room ? null : $room,
 				'descr'        => Azl_Commands::para( $cmd['desc'] ),
 				'hdo'          => $hdo,
-				'status'       => 'active',
+				'status'       => self::TRANSITIONS['logInquiry'][1],
 				'quick_close'  => 0,
 				'logged_by'    => $ctx->actor(),
 				'op_id'        => $ctx->op(),
@@ -170,7 +177,8 @@ final class Azl_Module_Inquiries extends Azl_Module {
 	}
 
 	/** Note, close or reopen: one step from a set of statuses to another. */
-	private function step( array $cmd, Azl_Commands $ctx, array $from, string $to, string $label, string $already ): array {
+	private function step( array $cmd, Azl_Commands $ctx, string $type, string $label, string $already ): array {
+		list( $from, $to ) = self::TRANSITIONS[ $type ];
 		$row = Azl_Db::row( 'SELECT status, created_at FROM ' . Azl_Db::t( 'inquiries' ) . ' WHERE id = %s' . Azl_Db::lock(), array( $cmd['inquiryId'] ) );
 		if ( null === $row ) {
 			return Azl_Commands::fail( 'Unknown inquiry' );

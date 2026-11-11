@@ -4,6 +4,15 @@ import { addDays, dayKey } from './hotelTime';
 
 export type InquiryType = 'in_house' | 'external' | 'checked_out';
 export type InquiryStatus = 'active' | 'noted' | 'done';
+/** Azl_Module_Inquiries::TRANSITIONS (a test compares the two): command => [from statuses, to status (null: unchanged)]. */
+export const TRANSITIONS: Record<string, [InquiryStatus[], InquiryStatus | null]> = {
+  logInquiry: [[], 'active'],
+  noteInquiry: [['active'], 'noted'],
+  closeInquiry: [['active', 'noted'], 'done'],
+  reopenInquiry: [['noted', 'done'], 'active'],
+};
+/** May this command run on a record in this status? The server refuses the rest. */
+export const allows = (cmd: keyof typeof TRANSITIONS, st: InquiryStatus) => TRANSITIONS[cmd][0].includes(st);
 
 export interface Inquiry {
   id: string;
@@ -89,9 +98,9 @@ function patch(id: string, type: keyof typeof labelOf, fn: (i: Inquiry, now: num
   }, [id]);
 }
 
-export const noteInquiry = (id: string) => patch(id, 'noteInquiry', (i) => (i.status === 'active' ? { status: 'noted' } : null));
-export const closeInquiry = (id: string) => patch(id, 'closeInquiry', (i, now) => (i.status !== 'done' ? { status: 'done', closedAt: now, quick: now - i.createdAt <= QUICK_MS } : null));
-export const reopenInquiry = (id: string) => patch(id, 'reopenInquiry', (i) => (i.status !== 'active' ? { status: 'active', closedAt: undefined, quick: false } : null));
+export const noteInquiry = (id: string) => patch(id, 'noteInquiry', (i) => (allows('noteInquiry', i.status) ? { status: 'noted' } : null));
+export const closeInquiry = (id: string) => patch(id, 'closeInquiry', (i, now) => (allows('closeInquiry', i.status) ? { status: 'done', closedAt: now, quick: now - i.createdAt <= QUICK_MS } : null));
+export const reopenInquiry = (id: string) => patch(id, 'reopenInquiry', (i) => (allows('reopenInquiry', i.status) ? { status: 'active', closedAt: undefined, quick: false } : null));
 
 export interface NewInquiry { type: InquiryType; name: string; room: string; hdo: string; desc: string }
 

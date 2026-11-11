@@ -1,5 +1,5 @@
 import { Button, Pill } from '../../ui/kit';
-import { closeInquiry, noteInquiry, reopenInquiry, type Inquiry } from './data';
+import { allows, closeInquiry, noteInquiry, reopenInquiry, type Inquiry } from './data';
 
 const TONE = { active: 'accent', noted: 'warn', done: 'ok' } as const;
 
@@ -18,9 +18,9 @@ export function InquiryActions({ i }: { i: Inquiry }) {
   const label = `${i.no || i.name}`;
   return (
     <div className="inq-acts">
-      {i.status === 'active' && <Button size="sm" variant="tint" aria-label={`Note ${label}`} onClick={() => noteInquiry(i.id)}>Note</Button>}
-      {i.status !== 'active' && <Button size="sm" variant="bad" aria-label={`Undo ${label}`} onClick={() => reopenInquiry(i.id)}>Undo</Button>}
-      {i.status !== 'done' && <Button size="sm" feel="success" aria-label={`Done ${label}`} onClick={() => closeInquiry(i.id)}>Done</Button>}
+      {allows('noteInquiry', i.status) && <Button size="sm" variant="tint" aria-label={`Note ${label}`} onClick={() => noteInquiry(i.id)}>Note</Button>}
+      {allows('reopenInquiry', i.status) && <Button size="sm" variant="bad" aria-label={`Undo ${label}`} onClick={() => reopenInquiry(i.id)}>Undo</Button>}
+      {allows('closeInquiry', i.status) && <Button size="sm" feel="success" aria-label={`Done ${label}`} onClick={() => closeInquiry(i.id)}>Done</Button>}
     </div>
   );
 }

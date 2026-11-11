@@ -6,6 +6,16 @@ import { app, createStore, moduleData, myStaff, runModuleCommand, setUI, toast }
 import type { Hazard, Incident, State } from '../../domain/types';
 
 export type CaseStatus = 'active' | 'monitoring' | 'resolved';
+/** Azl_Module_Crisis::TRANSITIONS (a test compares the two): command => [from statuses, to status (null: unchanged)]. */
+export const TRANSITIONS: Record<string, [CaseStatus[], CaseStatus | null]> = {
+  logCrisis: [[], 'active'],
+  updateCrisis: [['active', 'monitoring'], null],
+  monitorCrisis: [['active'], 'monitoring'],
+  closeCrisis: [['active', 'monitoring'], 'resolved'],
+  reopenCrisis: [['resolved'], 'monitoring'],
+};
+/** May this command run on a record in this status? The server refuses the rest. */
+export const allows = (cmd: keyof typeof TRANSITIONS, st: CaseStatus) => TRANSITIONS[cmd][0].includes(st);
 export interface CaseUpdate { at: number; by: string; text: string }
 export interface Call911 { by: string; at: string }
 export interface LinkedAlert { id: string; no: string; hazard: Hazard; rooms: string[]; status: Incident['status']; createdAt: number; called911: Call911 | null }
